@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"syscall"
@@ -1065,6 +1066,31 @@ ADD . /`,
 	logDone("build - add etc directory to root")
 }
 
+// Testing #9401
+func TestBuildAddPreservesFilesSpecialBits(t *testing.T) {
+	name := "testaddpreservesfilesspecialbits"
+	defer deleteImages(name)
+	ctx, err := fakeContext(`FROM busybox
+ADD suidbin /usr/bin/suidbin
+RUN chmod 4755 /usr/bin/suidbin
+RUN [ $(ls -l /usr/bin/suidbin | awk '{print $1}') = '-rwsr-xr-x' ]
+ADD ./data/ /
+RUN [ $(ls -l /usr/bin/suidbin | awk '{print $1}') = '-rwsr-xr-x' ]`,
+		map[string]string{
+			"suidbin":             "suidbin",
+			"/data/usr/test_file": "test1",
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctx.Close()
+
+	if _, err := buildImageFromContext(name, ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	logDone("build - add preserves files special bits")
+}
+
 func TestBuildCopySingleFileToRoot(t *testing.T) {
 	name := "testcopysinglefiletoroot"
 	defer deleteImages(name)
@@ -1569,7 +1595,7 @@ func TestBuildWithVolumes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	equal := deepEqual(&expected, &result)
+	equal := reflect.DeepEqual(&result, &expected)
 
 	if !equal {
 		t.Fatalf("Volumes %s, expected %s", result, expected)
@@ -3521,4 +3547,20 @@ func TestBuildWithTabs(t *testing.T) {
 		t.Fatalf("Missing tabs.\nGot:%s\nExp:%s", res, expected)
 	}
 	logDone("build - with tabs")
+}
+
+func TestBuildStderr(t *testing.T) {
+	// This test just makes sure that no non-error output goes
+	// to stderr
+	name := "testbuildstderr"
+	defer deleteImages(name)
+	_, _, stderr, err := buildImageWithStdoutStderr(name,
+		"FROM busybox\nRUN echo one", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stderr != "" {
+		t.Fatal("Stderr should have been empty, instead its: %q", stderr)
+	}
+	logDone("build - testing stderr")
 }
