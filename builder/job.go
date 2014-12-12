@@ -11,7 +11,6 @@ import (
 	"github.com/docker/docker/graph"
 	"github.com/docker/docker/pkg/archive"
 	"github.com/docker/docker/pkg/parsers"
-	"github.com/docker/docker/pkg/urlutil"
 	"github.com/docker/docker/registry"
 	"github.com/docker/docker/utils"
 )
@@ -59,8 +58,8 @@ func (b *BuilderJob) CmdBuild(job *engine.Job) engine.Status {
 
 	if remoteURL == "" {
 		context = ioutil.NopCloser(job.Stdin)
-	} else if urlutil.IsGitURL(remoteURL) {
-		if !urlutil.IsGitTransport(remoteURL) {
+	} else if utils.IsGIT(remoteURL) {
+		if !utils.ValidGitTransport(remoteURL) {
 			remoteURL = "https://" + remoteURL
 		}
 		root, err := ioutil.TempDir("", "docker-build-git")
@@ -78,7 +77,7 @@ func (b *BuilderJob) CmdBuild(job *engine.Job) engine.Status {
 			return job.Error(err)
 		}
 		context = c
-	} else if urlutil.IsURL(remoteURL) {
+	} else if utils.IsURL(remoteURL) {
 		f, err := utils.Download(remoteURL)
 		if err != nil {
 			return job.Error(err)

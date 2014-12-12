@@ -58,9 +58,6 @@ a list of daemon labels (`Labels`).
 **New!**
 You can set the new container's MAC address explicitly.
 
-**New!**
-Volumes are now initialized when the container is created.
-
 `POST /containers/(id)/start`
 
 **New!**

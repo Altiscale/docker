@@ -10,7 +10,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/prctl.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <getopt.h>
@@ -88,11 +87,6 @@ void nsenter()
 	if (strncmp(argv[0], kNsEnter, strlen(kNsEnter)) != 0) {
 		return;
 	}
-
-	if (prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) == -1) {
-                fprintf(stderr, "nsenter: failed to set child subreaper: %s", strerror(errno));
-                exit(1);
-        }
 
 	static const struct option longopts[] = {
 		{"nspid", required_argument, NULL, 'n'},

@@ -11,6 +11,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/docker/daemon/networkdriver"
 	"github.com/docker/docker/daemon/networkdriver/ipallocator"
+	"github.com/docker/docker/daemon/networkdriver/portallocator"
 	"github.com/docker/docker/daemon/networkdriver/portmapper"
 	"github.com/docker/docker/engine"
 	"github.com/docker/docker/nat"
@@ -467,13 +468,22 @@ func AllocatePort(job *engine.Job) engine.Status {
 		if host, err = portmapper.Map(container, ip, hostPort); err == nil {
 			break
 		}
-		// There is no point in immediately retrying to map an explicitly
-		// chosen port.
-		if hostPort != 0 {
-			job.Logf("Failed to allocate and map port %d: %s", hostPort, err)
+
+		if allocerr, ok := err.(portallocator.ErrPortAlreadyAllocated); ok {
+			// There is no point in immediately retrying to map an explicitly
+			// chosen port.
+			if hostPort != 0 {
+				job.Logf("Failed to bind %s for container address %s: %s", allocerr.IPPort(), container.String(), allocerr.Error())
+				break
+			}
+
+			// Automatically chosen 'free' port failed to bind: move on the next.
+			job.Logf("Failed to bind %s for container address %s. Trying another port.", allocerr.IPPort(), container.String())
+		} else {
+			// some other error during mapping
+			job.Logf("Received an unexpected error during port allocation: %s", err.Error())
 			break
 		}
-		job.Logf("Failed to allocate and map port: %s, retry: %d", err, i+1)
 	}
 
 	if err != nil {

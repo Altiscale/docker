@@ -24,12 +24,10 @@ import (
 	"github.com/docker/docker/daemon"
 	imagepkg "github.com/docker/docker/image"
 	"github.com/docker/docker/pkg/archive"
-	"github.com/docker/docker/pkg/chrootarchive"
 	"github.com/docker/docker/pkg/parsers"
 	"github.com/docker/docker/pkg/symlink"
 	"github.com/docker/docker/pkg/system"
 	"github.com/docker/docker/pkg/tarsum"
-	"github.com/docker/docker/pkg/urlutil"
 	"github.com/docker/docker/registry"
 	"github.com/docker/docker/utils"
 )
@@ -48,8 +46,7 @@ func (b *Builder) readContext(context io.Reader) error {
 	if b.context, err = tarsum.NewTarSum(decompressedStream, true, tarsum.Version0); err != nil {
 		return err
 	}
-
-	if err := chrootarchive.Untar(b.context, tmpdirPath, nil); err != nil {
+	if err := archive.Untar(b.context, tmpdirPath, nil); err != nil {
 		return err
 	}
 
@@ -218,7 +215,7 @@ func calcCopyInfo(b *Builder, cmdName string, cInfos *[]*copyInfo, origPath stri
 	origPath = strings.TrimPrefix(origPath, "./")
 
 	// In the remote/URL case, download it and gen its hashcode
-	if urlutil.IsURL(origPath) {
+	if utils.IsURL(origPath) {
 		if !allowRemote {
 			return fmt.Errorf("Source can't be a URL for %s", cmdName)
 		}
@@ -615,7 +612,7 @@ func (b *Builder) addContext(container *daemon.Container, orig, dest string, dec
 	}
 
 	if fi.IsDir() {
-		return copyAsDirectory(origPath, destPath)
+		return copyAsDirectory(origPath, destPath, destExists)
 	}
 
 	// If we are adding a remote file (or we've been told not to decompress), do not try to untar it
@@ -630,7 +627,7 @@ func (b *Builder) addContext(container *daemon.Container, orig, dest string, dec
 		}
 
 		// try to successfully untar the orig
-		if err := chrootarchive.UntarPath(origPath, tarDest); err == nil {
+		if err := archive.UntarPath(origPath, tarDest); err == nil {
 			return nil
 		} else if err != io.EOF {
 			log.Debugf("Couldn't untar %s to %s: %s", origPath, tarDest, err)
@@ -640,7 +637,7 @@ func (b *Builder) addContext(container *daemon.Container, orig, dest string, dec
 	if err := os.MkdirAll(path.Dir(destPath), 0755); err != nil {
 		return err
 	}
-	if err := chrootarchive.CopyWithTar(origPath, destPath); err != nil {
+	if err := archive.CopyWithTar(origPath, destPath); err != nil {
 		return err
 	}
 
@@ -649,31 +646,37 @@ func (b *Builder) addContext(container *daemon.Container, orig, dest string, dec
 		resPath = path.Join(destPath, path.Base(origPath))
 	}
 
-	return fixPermissions(origPath, resPath, 0, 0)
+	return fixPermissions(resPath, 0, 0)
 }
 
-func copyAsDirectory(source, destination string) error {
-	if err := chrootarchive.CopyWithTar(source, destination); err != nil {
+func copyAsDirectory(source, destination string, destinationExists bool) error {
+	if err := archive.CopyWithTar(source, destination); err != nil {
 		return err
 	}
-	return fixPermissions(source, destination, 0, 0)
-}
 
-func fixPermissions(source, destination string, uid, gid int) error {
-	// We Walk on the source rather than on the destination because we don't
-	// want to change permissions on things we haven't created or modified.
-	return filepath.Walk(source, func(fullpath string, info os.FileInfo, err error) error {
-		// Do not alter the walk root itself as it potentially existed before.
-		if source == fullpath {
-			return nil
-		}
-		// Path is prefixed by source: substitute with destination instead.
-		cleaned, err := filepath.Rel(source, fullpath)
+	if destinationExists {
+		files, err := ioutil.ReadDir(source)
 		if err != nil {
 			return err
 		}
-		fullpath = path.Join(destination, cleaned)
-		return os.Lchown(fullpath, uid, gid)
+
+		for _, file := range files {
+			if err := fixPermissions(filepath.Join(destination, file.Name()), 0, 0); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	return fixPermissions(destination, 0, 0)
+}
+
+func fixPermissions(destination string, uid, gid int) error {
+	return filepath.Walk(destination, func(path string, info os.FileInfo, err error) error {
+		if err := os.Lchown(path, uid, gid); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
 	})
 }
 

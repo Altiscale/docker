@@ -16,7 +16,7 @@ techniques for installing Docker all the time.
  - [Arch Linux](archlinux/)
  - [CRUX Linux](cruxlinux/)
  - [Gentoo](gentoolinux/)
- - [openSUSE and SUSE Linux Enterprise](SUSE/)
+ - [openSUSE](openSUSE/)
  - [FrugalWare](frugalware/)
  - [Mac OS X](mac/)
  - [Windows](windows/)

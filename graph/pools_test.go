@@ -1,14 +1,6 @@
 package graph
 
-import (
-	"testing"
-
-	"github.com/docker/docker/pkg/reexec"
-)
-
-func init() {
-	reexec.Init()
-}
+import "testing"
 
 func TestPools(t *testing.T) {
 	s := &TagStore{

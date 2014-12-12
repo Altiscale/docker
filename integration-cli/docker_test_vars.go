@@ -16,11 +16,10 @@ var (
 	// the private registry to use for tests
 	privateRegistryURL = "127.0.0.1:5000"
 
-	dockerBasePath       = "/var/lib/docker"
-	execDriverPath       = dockerBasePath + "/execdriver/native"
-	volumesConfigPath    = dockerBasePath + "/volumes"
-	volumesStoragePath   = dockerBasePath + "/vfs/dir"
-	containerStoragePath = dockerBasePath + "/containers"
+	dockerBasePath     = "/var/lib/docker"
+	execDriverPath     = dockerBasePath + "/execdriver/native"
+	volumesConfigPath  = dockerBasePath + "/volumes"
+	volumesStoragePath = dockerBasePath + "/vfs/dir"
 
 	workingDirectory string
 )

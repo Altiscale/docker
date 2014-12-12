@@ -53,9 +53,12 @@ func (daemon *Daemon) ContainerCreate(job *engine.Job) engine.Status {
 		job.Errorf("IPv4 forwarding is disabled.\n")
 	}
 	container.LogEvent("create")
-
-	job.Printf("%s\n", container.ID)
-
+	// FIXME: this is necessary because daemon.Create might return a nil container
+	// with a non-nil error. This should not happen! Once it's fixed we
+	// can remove this workaround.
+	if container != nil {
+		job.Printf("%s\n", container.ID)
+	}
 	for _, warning := range buildWarnings {
 		job.Errorf("%s\n", warning)
 	}
@@ -80,8 +83,8 @@ func (daemon *Daemon) Create(config *runconfig.Config, hostConfig *runconfig.Hos
 	if warnings, err = daemon.mergeAndVerifyConfig(config, img); err != nil {
 		return nil, nil, err
 	}
-	if hostConfig != nil && hostConfig.SecurityOpt == nil {
-		hostConfig.SecurityOpt, err = daemon.GenerateSecurityOpt(hostConfig.IpcMode)
+	if hostConfig != nil && config.SecurityOpt == nil {
+		config.SecurityOpt, err = daemon.GenerateSecurityOpt(hostConfig.IpcMode)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -100,19 +103,11 @@ func (daemon *Daemon) Create(config *runconfig.Config, hostConfig *runconfig.Hos
 			return nil, nil, err
 		}
 	}
-	if err := container.Mount(); err != nil {
-		return nil, nil, err
-	}
-	defer container.Unmount()
-	if err := container.prepareVolumes(); err != nil {
-		return nil, nil, err
-	}
 	if err := container.ToDisk(); err != nil {
 		return nil, nil, err
 	}
 	return container, warnings, nil
 }
-
 func (daemon *Daemon) GenerateSecurityOpt(ipcMode runconfig.IpcMode) ([]string, error) {
 	if ipcMode.IsHost() {
 		return label.DisableSecOpt(), nil

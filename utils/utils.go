@@ -288,7 +288,21 @@ func NewHTTPRequestError(msg string, res *http.Response) error {
 	}
 }
 
-var localHostRx = regexp.MustCompile(`(?m)^nameserver 127[^\n]+\n*`)
+func IsURL(str string) bool {
+	return strings.HasPrefix(str, "http://") || strings.HasPrefix(str, "https://")
+}
+
+func IsGIT(str string) bool {
+	return strings.HasPrefix(str, "git://") || strings.HasPrefix(str, "github.com/") || strings.HasPrefix(str, "git@") || (strings.HasSuffix(str, ".git") && IsURL(str))
+}
+
+func ValidGitTransport(str string) bool {
+	return strings.HasPrefix(str, "git://") || strings.HasPrefix(str, "git@") || IsURL(str)
+}
+
+var (
+	localHostRx = regexp.MustCompile(`(?m)^nameserver 127[^\n]+\n*`)
+)
 
 // RemoveLocalDns looks into the /etc/resolv.conf,
 // and removes any local nameserver entries.

@@ -24,7 +24,6 @@ type execConfig struct {
 	sync.Mutex
 	ID            string
 	Running       bool
-	ExitCode      int
 	ProcessConfig execdriver.ProcessConfig
 	StreamConfig
 	OpenStdin  bool
@@ -118,10 +117,7 @@ func (d *Daemon) ContainerExecCreate(job *engine.Job) engine.Status {
 		return job.Error(err)
 	}
 
-	config, err := runconfig.ExecConfigFromJob(job)
-	if err != nil {
-		return job.Error(err)
-	}
+	config := runconfig.ExecConfigFromJob(job)
 
 	entrypoint, args := d.getEntrypointAndArgs(nil, config.Cmd)
 
@@ -209,9 +205,8 @@ func (d *Daemon) ContainerExecStart(job *engine.Job) engine.Status {
 
 	execErr := make(chan error)
 
-	// Note, the execConfig data will be removed when the container
-	// itself is deleted.  This allows us to query it (for things like
-	// the exitStatus) even after the cmd is done running.
+	// Remove exec from daemon and container.
+	defer d.unregisterExecCommand(execConfig)
 
 	go func() {
 		err := container.Exec(execConfig)
@@ -234,17 +229,7 @@ func (d *Daemon) ContainerExecStart(job *engine.Job) engine.Status {
 }
 
 func (d *Daemon) Exec(c *Container, execConfig *execConfig, pipes *execdriver.Pipes, startCallback execdriver.StartCallback) (int, error) {
-	exitStatus, err := d.execDriver.Exec(c.command, &execConfig.ProcessConfig, pipes, startCallback)
-
-	// On err, make sure we don't leave ExitCode at zero
-	if err != nil && exitStatus == 0 {
-		exitStatus = 128
-	}
-
-	execConfig.ExitCode = exitStatus
-	execConfig.Running = false
-
-	return exitStatus, err
+	return d.execDriver.Exec(c.command, &execConfig.ProcessConfig, pipes, startCallback)
 }
 
 func (container *Container) Exec(execConfig *execConfig) error {

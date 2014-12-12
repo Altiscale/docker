@@ -95,7 +95,6 @@ type HostConfig struct {
 	CapAdd          []string
 	CapDrop         []string
 	RestartPolicy   RestartPolicy
-	SecurityOpt     []string
 }
 
 // This is used by the create command when you want to set both the
@@ -131,7 +130,6 @@ func ContainerHostConfigFromJob(job *engine.Job) *HostConfig {
 	job.GetenvJson("PortBindings", &hostConfig.PortBindings)
 	job.GetenvJson("Devices", &hostConfig.Devices)
 	job.GetenvJson("RestartPolicy", &hostConfig.RestartPolicy)
-	hostConfig.SecurityOpt = job.GetenvList("SecurityOpt")
 	if Binds := job.GetenvList("Binds"); Binds != nil {
 		hostConfig.Binds = Binds
 	}

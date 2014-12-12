@@ -1,8 +1,6 @@
 package integration
 
 import (
-	"syscall"
-
 	"github.com/docker/libcontainer"
 	"github.com/docker/libcontainer/cgroups"
 	"github.com/docker/libcontainer/devices"
@@ -60,13 +58,6 @@ func newTemplateConfig(rootfs string) *libcontainer.Config {
 				Type:    "loopback",
 				Address: "127.0.0.1/0",
 				Gateway: "localhost",
-			},
-		},
-		Rlimits: []libcontainer.Rlimit{
-			{
-				Type: syscall.RLIMIT_NOFILE,
-				Hard: uint64(1024),
-				Soft: uint64(1024),
 			},
 		},
 	}

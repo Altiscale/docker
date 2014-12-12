@@ -1,4 +1,4 @@
-// +build linux,amd64 linux,ppc64 linux,ppc64le linux,s390x
+// +build linux,amd64
 
 package system
 

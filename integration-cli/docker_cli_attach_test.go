@@ -50,7 +50,7 @@ func TestAttachMultipleAndRestart(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if err := c.Start(); err != nil {
+			if _, err := startCommand(c); err != nil {
 				t.Fatal(err)
 			}
 

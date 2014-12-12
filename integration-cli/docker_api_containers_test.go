@@ -23,7 +23,7 @@ func TestContainerApiGetAll(t *testing.T) {
 		t.Fatalf("Error on container creation: %v, output: %q", err, out)
 	}
 
-	body, err := sockRequest("GET", "/containers/json?all=1", nil)
+	body, err := sockRequest("GET", "/containers/json?all=1")
 	if err != nil {
 		t.Fatalf("GET all containers sockRequest failed: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestContainerApiGetExport(t *testing.T) {
 		t.Fatalf("Error on container creation: %v, output: %q", err, out)
 	}
 
-	body, err := sockRequest("GET", "/containers/"+name+"/export", nil)
+	body, err := sockRequest("GET", "/containers/"+name+"/export")
 	if err != nil {
 		t.Fatalf("GET containers/export sockRequest failed: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestContainerApiGetChanges(t *testing.T) {
 		t.Fatalf("Error on container creation: %v, output: %q", err, out)
 	}
 
-	body, err := sockRequest("GET", "/containers/"+name+"/changes", nil)
+	body, err := sockRequest("GET", "/containers/"+name+"/changes")
 	if err != nil {
 		t.Fatalf("GET containers/changes sockRequest failed: %v", err)
 	}

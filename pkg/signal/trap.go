@@ -34,8 +34,9 @@ func Trap(cleanup func()) {
 				case os.Interrupt, syscall.SIGTERM:
 					// If the user really wants to interrupt, let him do so.
 					if atomic.LoadUint32(&interruptCount) < 3 {
+						atomic.AddUint32(&interruptCount, 1)
 						// Initiate the cleanup only once
-						if atomic.AddUint32(&interruptCount, 1) == 1 {
+						if atomic.LoadUint32(&interruptCount) == 1 {
 							// Call cleanup handler
 							cleanup()
 							os.Exit(0)

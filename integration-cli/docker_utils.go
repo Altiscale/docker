@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -251,7 +249,7 @@ func (d *Daemon) Cmd(name string, arg ...string) (string, error) {
 	return string(b), err
 }
 
-func sockRequest(method, endpoint string, data interface{}) ([]byte, error) {
+func sockRequest(method, endpoint string) ([]byte, error) {
 	// FIX: the path to sock should not be hardcoded
 	sock := filepath.Join("/", "var", "run", "docker.sock")
 	c, err := net.DialTimeout("unix", sock, time.Duration(10*time.Second))
@@ -262,12 +260,7 @@ func sockRequest(method, endpoint string, data interface{}) ([]byte, error) {
 	client := httputil.NewClientConn(c, nil)
 	defer client.Close()
 
-	jsonData := bytes.NewBuffer(nil)
-	if err := json.NewEncoder(jsonData).Encode(data); err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(method, endpoint, jsonData)
+	req, err := http.NewRequest(method, endpoint, nil)
 	req.Header.Set("Content-Type", "application/json")
 	if err != nil {
 		return nil, fmt.Errorf("could not create new request: %v", err)
@@ -596,25 +589,6 @@ func buildImageWithOut(name, dockerfile string, useCache bool) (string, string, 
 	return id, out, nil
 }
 
-func buildImageWithStdoutStderr(name, dockerfile string, useCache bool) (string, string, string, error) {
-	args := []string{"build", "-t", name}
-	if !useCache {
-		args = append(args, "--no-cache")
-	}
-	args = append(args, "-")
-	buildCmd := exec.Command(dockerBinary, args...)
-	buildCmd.Stdin = strings.NewReader(dockerfile)
-	stdout, stderr, exitCode, err := runCommandWithStdoutStderr(buildCmd)
-	if err != nil || exitCode != 0 {
-		return "", stdout, stderr, fmt.Errorf("failed to build the image: %s", stdout)
-	}
-	id, err := getIDByName(name)
-	if err != nil {
-		return "", stdout, stderr, err
-	}
-	return id, stdout, stderr, nil
-}
-
 func buildImage(name, dockerfile string, useCache bool) (string, error) {
 	id, _, err := buildImageWithOut(name, dockerfile, useCache)
 	return id, err
@@ -756,37 +730,4 @@ func readFile(src string, t *testing.T) (content string) {
 		t.Fatal(err)
 	}
 	return string(data)
-}
-
-func containerStorageFile(containerId, basename string) string {
-	return filepath.Join("/var/lib/docker/containers", containerId, basename)
-}
-
-// docker commands that use this function must be run with the '-d' switch.
-func runCommandAndReadContainerFile(filename string, cmd *exec.Cmd) ([]byte, error) {
-	out, _, err := runCommandWithOutput(cmd)
-	if err != nil {
-		return nil, fmt.Errorf("%v: %q", err, out)
-	}
-
-	time.Sleep(1 * time.Second)
-
-	contID := strings.TrimSpace(out)
-
-	return readContainerFile(contID, filename)
-}
-
-func readContainerFile(containerId, filename string) ([]byte, error) {
-	f, err := os.Open(containerStorageFile(containerId, filename))
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	content, err := ioutil.ReadAll(f)
-	if err != nil {
-		return nil, err
-	}
-
-	return content, nil
 }
