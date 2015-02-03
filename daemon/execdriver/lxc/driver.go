@@ -20,6 +20,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/docker/daemon/execdriver"
 	"github.com/docker/docker/pkg/term"
+	"github.com/docker/docker/pkg/version"
 	"github.com/docker/docker/utils"
 	"github.com/docker/libcontainer/cgroups"
 	"github.com/docker/libcontainer/mount/nodes"
@@ -98,6 +99,13 @@ func (d *driver) Run(c *execdriver.Command, pipes *execdriver.Pipes, startCallba
 		"-n", c.ID,
 		"-f", configPath,
 	}
+
+	// From lxc>=1.1 the default behavior is to daemonize containers after start
+	lxcVersion := version.Version(d.version())
+	if lxcVersion.GreaterThanOrEqualTo(version.Version("1.1")) {
+		params = append(params, "-F")
+	}
+
 	if c.Network.ContainerID != "" {
 		params = append(params,
 			"--share-net", c.Network.ContainerID,
