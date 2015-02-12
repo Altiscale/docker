@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/docker/libcontainer/user"
 )
 
@@ -35,8 +36,10 @@ func xlateOneFile(path string, finfo os.FileInfo, containerRoot uint32, inverse 
 		if err := os.Lchown(path, int(newUid), int(newGid)); err != nil {
 			return fmt.Errorf("Cannot chown %s: %s", path, err)
 		}
-		if err := os.Chmod(path, mode); err != nil {
-			return fmt.Errorf("Cannot chmod %s: %s", path, err)
+		if finfo.Mode() & os.ModeSymlink != os.ModeSymlink {
+			if err := os.Chmod(path, mode); err != nil {
+				return fmt.Errorf("Cannot chmod %s: %s", path, err)
+			}
 		}
 	}
 
@@ -59,6 +62,7 @@ func xlateUidsRecursive(base string, containerRoot uint32, inverse bool) error {
 		path := filepath.Join(base, finfo.Name())
 		if finfo.IsDir() {
 			if err := xlateUidsRecursive(path, containerRoot, inverse); err != nil {
+				log.Debugf("xlateUidsRecursive: %s", err)
 				return err
 			}
 		}
