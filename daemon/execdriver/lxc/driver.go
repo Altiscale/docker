@@ -36,6 +36,17 @@ type driver struct {
 	sharedRoot bool
 }
 
+func (d *driver) AddUidMaps(c *execdriver.Command) error {
+	lxcConfig := c.LxcConfig
+	for _, uidMap := range c.UidMaps {
+		lxcConfig = append(lxcConfig, fmt.Sprintf("id_map = u %d %d %d", uidMap.ContainerUid, uidMap.HostUid, uidMap.Size))
+		lxcConfig = append(lxcConfig, fmt.Sprintf("id_map = g %d %d %d", uidMap.ContainerUid, uidMap.HostUid, uidMap.Size))
+	}
+	c.LxcConfig = lxcConfig
+
+	return nil
+}
+
 func NewDriver(root, initPath string, apparmor bool) (*driver, error) {
 	// setup unconfined symlink
 	if err := linkLxcStart(root); err != nil {
@@ -442,7 +453,7 @@ func (d *driver) generateEnvConfig(c *execdriver.Command) error {
 		Private:     true,
 	})
 
-	return ioutil.WriteFile(p, data, 0600)
+	return ioutil.WriteFile(p, data, 0644)
 }
 
 // Clean not implemented for lxc

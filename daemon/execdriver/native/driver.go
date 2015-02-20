@@ -44,8 +44,20 @@ type driver struct {
 	sync.Mutex
 }
 
+func (d *driver) AddUidMaps(c *execdriver.Command) error {
+	return nil
+}
+
 func NewDriver(root, initPath string) (*driver, error) {
-	if err := os.MkdirAll(root, 0700); err != nil {
+	if err := os.MkdirAll(root, 0711); err != nil {
+		return nil, err
+	}
+	// Fix permissions of "execdriver/native" and "execdriver"
+	// directories in case they were already created with 0700
+	if err := os.Chmod(root, 0711); err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(filepath.Dir(root), 0711); err != nil {
 		return nil, err
 	}
 
