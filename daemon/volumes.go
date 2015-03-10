@@ -108,6 +108,15 @@ func (m *Mount) initialize() error {
 		copyExistingContents(containerMntPath, m.volume.Path)
 	}
 
+	// Translate UIDs of the empty new volumes and volumes copied from the image but not
+	// volumes imported from other containers or the host
+	if !m.volume.IsBindMount && m.from == nil {
+		log.Debugf("Translating UIDs of volume %s:%s", m.volume.Path, m.MountToPath)
+		if err := uidmap.XlateUids(m.volume.Path, false); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
