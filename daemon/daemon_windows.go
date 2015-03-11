@@ -89,7 +89,7 @@ func migrateIfDownlevel(driver graphdriver.Driver, root string) error {
 	return nil
 }
 
-func configureSysInit(config *Config) (string, error) {
+func configureSysInit(config *Config, rootUID, rootGID int) (string, error) {
 	// TODO Windows.
 	return os.Getenv("TEMP"), nil
 }
