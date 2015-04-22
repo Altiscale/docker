@@ -17,6 +17,7 @@ import (
 	"github.com/docker/docker/daemon"
 	"github.com/docker/docker/graph/tags"
 	"github.com/docker/docker/pkg/archive"
+	"github.com/docker/docker/pkg/chrootarchive"
 	"github.com/docker/docker/pkg/httputils"
 	"github.com/docker/docker/pkg/parsers"
 	"github.com/docker/docker/pkg/progressreader"
@@ -194,6 +195,16 @@ func Build(d *daemon.Daemon, buildConfig *Config) error {
 
 	defer context.Close()
 
+	var defaultArchiver *archive.Archiver
+	uidMaps, gidMaps := d.GetUidGidMaps()
+	if uidMaps != nil || gidMaps != nil {
+		defaultArchiver = &archive.Archiver{
+			Untar:   chrootarchive.Untar,
+			UidMaps: uidMaps,
+			GidMaps: gidMaps,
+		}
+	}
+
 	builder := &builder{
 		Daemon: d,
 		OutStream: &streamformatter.StdoutFormatter{
@@ -226,6 +237,7 @@ func Build(d *daemon.Daemon, buildConfig *Config) error {
 		id:               stringid.GenerateRandomID(),
 		buildArgs:        buildConfig.BuildArgs,
 		allowedBuildArgs: make(map[string]bool),
+		defaultArchiver:  defaultArchiver,
 	}
 
 	defer func() {
