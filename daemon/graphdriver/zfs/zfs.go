@@ -308,7 +308,7 @@ func (d *Driver) Get(id, mountLabel string) (string, error) {
 		return "", err
 	}
 
-	err := mount.Mount(filesystem, mountpoint, "zfs", options)
+	err = mount.Mount(filesystem, mountpoint, "zfs", options)
 	if err != nil {
 		return "", fmt.Errorf("error creating zfs mount of %s to %s: %v", filesystem, mountpoint, err)
 	}

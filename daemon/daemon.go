@@ -752,7 +752,7 @@ func NewDaemon(config *Config, registryService *registry.Service) (daemon *Daemo
 	}
 
 	// Configure the volumes driver
-	volStore, err := configureVolumes(config)
+	volStore, err := configureVolumes(config, rootUid, rootGid)
 	if err != nil {
 		return nil, err
 	}
@@ -1229,8 +1229,8 @@ func (daemon *Daemon) NetworkController() libnetwork.NetworkController {
 	return daemon.netController
 }
 
-func configureVolumes(config *Config) (*store.VolumeStore, error) {
-	volumesDriver, err := local.New(config.Root)
+func configureVolumes(config *Config, rootUid, rootGid int) (*store.VolumeStore, error) {
+	volumesDriver, err := local.New(config.Root, rootUid, rootGid)
 	if err != nil {
 		return nil, err
 	}
