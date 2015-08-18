@@ -245,6 +245,13 @@ func (d *Driver) setupRemappedRoot(container *configs.Config, c *execdriver.Comm
 		node.Uid = uint32(c.RemappedRoot.Uid)
 		node.Gid = uint32(c.RemappedRoot.Gid)
 	}
+	// TODO: until a kernel/mount solution exists for handling remount in a user namespace,
+	// we must clear the readonly flag for the cgroups mount (@mrunalp concurs)
+	for i := range container.Mounts {
+		if container.Mounts[i].Device == "cgroup" {
+			container.Mounts[i].Flags &= ^syscall.MS_RDONLY
+		}
+	}
 
 	return nil
 }
