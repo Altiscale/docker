@@ -25,7 +25,7 @@ func parseSecurityOpt(container *Container, config *runconfig.HostConfig) error 
 	return nil
 }
 
-func setupInitLayer(initLayer string) error {
+func setupInitLayer(initLayer string, rootUID, rootGID int) error {
 	return nil
 }
 

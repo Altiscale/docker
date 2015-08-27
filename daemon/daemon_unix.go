@@ -452,7 +452,7 @@ func initBridgeDriver(controller libnetwork.NetworkController, config *Config) e
 //
 // This extra layer is used by all containers as the top-most ro layer. It protects
 // the container from unwanted side-effects on the rw layer.
-func setupInitLayer(initLayer string, rootUid, rootGid int) error {
+func setupInitLayer(initLayer string, rootUID, rootGID int) error {
 	for pth, typ := range map[string]string{
 		"/dev/pts":         "dir",
 		"/dev/shm":         "dir",
@@ -475,12 +475,12 @@ func setupInitLayer(initLayer string, rootUid, rootGid int) error {
 
 		if _, err := os.Stat(filepath.Join(initLayer, pth)); err != nil {
 			if os.IsNotExist(err) {
-				if err := idtools.MkdirAllAs(filepath.Join(initLayer, filepath.Dir(pth)), 0755, rootUid, rootGid); err != nil {
+				if err := idtools.MkdirAllAs(filepath.Join(initLayer, filepath.Dir(pth)), 0755, rootUID, rootGID); err != nil {
 					return err
 				}
 				switch typ {
 				case "dir":
-					if err := idtools.MkdirAllAs(filepath.Join(initLayer, pth), 0755, rootUid, rootGid); err != nil {
+					if err := idtools.MkdirAllAs(filepath.Join(initLayer, pth), 0755, rootUID, rootGID); err != nil {
 						return err
 					}
 				case "file":
@@ -489,7 +489,7 @@ func setupInitLayer(initLayer string, rootUid, rootGid int) error {
 						return err
 					}
 					f.Close()
-					f.Chown(rootUid, rootGid)
+					f.Chown(rootUID, rootGID)
 				default:
 					if err := os.Symlink(typ, filepath.Join(initLayer, pth)); err != nil {
 						return err

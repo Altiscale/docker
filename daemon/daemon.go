@@ -607,7 +607,7 @@ func NewDaemon(config *Config, registryService *registry.Service) (daemon *Daemo
 	if err != nil {
 		return nil, err
 	}
-	rootUid, rootGid, err := idtools.GetRootUidGid(uidMaps, gidMaps)
+	rootUID, rootGID, err := idtools.GetRootUIDGID(uidMaps, gidMaps)
 	if err != nil {
 		return nil, err
 	}
@@ -623,12 +623,12 @@ func NewDaemon(config *Config, registryService *registry.Service) (daemon *Daemo
 		}
 	}
 
-	if err = setupDaemonRoot(config, realRoot, rootUid, rootGid); err != nil {
+	if err = setupDaemonRoot(config, realRoot, rootUID, rootGID); err != nil {
 		return nil, err
 	}
 
 	// set up the tmpDir to use a canonical path
-	tmp, err := tempDir(config.Root, rootUid, rootGid)
+	tmp, err := tempDir(config.Root, rootUID, rootGID)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to get the TempDir under %s: %s", config.Root, err)
 	}
@@ -675,7 +675,7 @@ func NewDaemon(config *Config, registryService *registry.Service) (daemon *Daemo
 
 	daemonRepo := filepath.Join(config.Root, "containers")
 
-	if err := idtools.MkdirAllAs(daemonRepo, 0700, rootUid, rootGid); err != nil && !os.IsExist(err) {
+	if err := idtools.MkdirAllAs(daemonRepo, 0700, rootUID, rootGID); err != nil && !os.IsExist(err) {
 		return nil, err
 	}
 
@@ -691,7 +691,7 @@ func NewDaemon(config *Config, registryService *registry.Service) (daemon *Daemo
 	}
 
 	// Configure the volumes driver
-	volStore, err := configureVolumes(config, rootUid, rootGid)
+	volStore, err := configureVolumes(config, rootUID, rootGID)
 	if err != nil {
 		return nil, err
 	}
@@ -746,7 +746,7 @@ func NewDaemon(config *Config, registryService *registry.Service) (daemon *Daemo
 
 	var sysInitPath string
 	if config.ExecDriver == "lxc" {
-		initPath, err := configureSysInit(config, rootUid, rootGid)
+		initPath, err := configureSysInit(config, rootUID, rootGID)
 		if err != nil {
 			return nil, err
 		}
@@ -955,11 +955,11 @@ func (daemon *Daemon) diff(container *Container) (archive.Archive, error) {
 func (daemon *Daemon) createRootfs(container *Container) error {
 	// Step 1: create the container directory.
 	// This doubles as a barrier to avoid race conditions.
-	rootUid, rootGid, err := idtools.GetRootUidGid(daemon.uidMaps, daemon.gidMaps)
+	rootUID, rootGID, err := idtools.GetRootUIDGID(daemon.uidMaps, daemon.gidMaps)
 	if err != nil {
 		return err
 	}
-	if err := idtools.MkdirAs(container.root, 0700, rootUid, rootGid); err != nil {
+	if err := idtools.MkdirAs(container.root, 0700, rootUID, rootGID); err != nil {
 		return err
 	}
 	initID := fmt.Sprintf("%s-init", container.ID)
@@ -971,7 +971,7 @@ func (daemon *Daemon) createRootfs(container *Container) error {
 		return err
 	}
 
-	if err := setupInitLayer(initPath, rootUid, rootGid); err != nil {
+	if err := setupInitLayer(initPath, rootUID, rootGID); err != nil {
 		daemon.driver.Put(initID)
 		return err
 	}
@@ -1025,18 +1025,18 @@ func (daemon *Daemon) containerGraph() *graphdb.Database {
 	return daemon.containerGraphDB
 }
 
-// GetUidGidMaps returns the current daemon's user namespace settings
+// GetUIDGIDMaps returns the current daemon's user namespace settings
 // for the full uid and gid maps which will be applied to containers
 // started in this instance.
-func (daemon *Daemon) GetUidGidMaps() ([]idtools.IDMap, []idtools.IDMap) {
+func (daemon *Daemon) GetUIDGIDMaps() ([]idtools.IDMap, []idtools.IDMap) {
 	return daemon.uidMaps, daemon.gidMaps
 }
 
-// GetRemappedUidGid returns the current daemon's uid and gid values
+// GetRemappedUIDGID returns the current daemon's uid and gid values
 // if user namespaces are in use for this daemon instance.  If not
 // this function will return "real" root values of 0, 0.
-func (daemon *Daemon) GetRemappedUidGid() (int, int) {
-	uid, gid, _ := idtools.GetRootUidGid(daemon.uidMaps, daemon.gidMaps)
+func (daemon *Daemon) GetRemappedUIDGID() (int, int) {
+	uid, gid, _ := idtools.GetRootUIDGID(daemon.uidMaps, daemon.gidMaps)
 	return uid, gid
 }
 
@@ -1074,12 +1074,12 @@ func (daemon *Daemon) ImageGetCached(imgID string, config *runconfig.Config) (*i
 }
 
 // tempDir returns the default directory to use for temporary files.
-func tempDir(rootDir string, rootUid, rootGid int) (string, error) {
+func tempDir(rootDir string, rootUID, rootGID int) (string, error) {
 	var tmpDir string
 	if tmpDir = os.Getenv("DOCKER_TMPDIR"); tmpDir == "" {
 		tmpDir = filepath.Join(rootDir, "tmp")
 	}
-	return tmpDir, idtools.MkdirAllAs(tmpDir, 0700, rootUid, rootGid)
+	return tmpDir, idtools.MkdirAllAs(tmpDir, 0700, rootUID, rootGID)
 }
 
 func (daemon *Daemon) setHostConfig(container *Container, hostConfig *runconfig.HostConfig) error {
@@ -1168,8 +1168,8 @@ func (daemon *Daemon) NetworkController() libnetwork.NetworkController {
 	return daemon.netController
 }
 
-func configureVolumes(config *Config, rootUid, rootGid int) (*store.VolumeStore, error) {
-	volumesDriver, err := local.New(config.Root, rootUid, rootGid)
+func configureVolumes(config *Config, rootUID, rootGID int) (*store.VolumeStore, error) {
+	volumesDriver, err := local.New(config.Root, rootUID, rootGID)
 	if err != nil {
 		return nil, err
 	}

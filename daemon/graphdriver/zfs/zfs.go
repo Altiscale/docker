@@ -299,12 +299,12 @@ func (d *Driver) Get(id, mountLabel string) (string, error) {
 	options := label.FormatMountLabel("", mountLabel)
 	logrus.Debugf(`[zfs] mount("%s", "%s", "%s")`, filesystem, mountpoint, options)
 
-	rootUid, rootGid, err := idtools.GetRootUidGid(d.uidMaps, d.gidMaps)
+	rootUID, rootGID, err := idtools.GetRootUIDGID(d.uidMaps, d.gidMaps)
 	if err != nil {
 		return "", err
 	}
 	// Create the target directories if they don't exist
-	if err := idtools.MkdirAllAs(mountpoint, 0755, rootUid, rootGid); err != nil {
+	if err := idtools.MkdirAllAs(mountpoint, 0755, rootUID, rootGID); err != nil {
 		return "", err
 	}
 
