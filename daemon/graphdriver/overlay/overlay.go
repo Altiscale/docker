@@ -369,6 +369,12 @@ func (d *Driver) Get(id string, mountLabel string) (string, error) {
 	if err := syscall.Mount("overlay", mergedDir, "overlay", 0, label.FormatMountLabel(opts, mountLabel)); err != nil {
 		return "", fmt.Errorf("error creating overlay mount to %s: %v", mergedDir, err)
 	}
+	// chown "workdir/work" to the remapped root UID/GID. Overlay fs inside a
+	// user namespace requires this to move a directory from lower to upper.
+	rootUID, rootGID, err := idtools.GetRootUIDGID(d.uidMaps, d.gidMaps)
+	if err := os.Chown(path.Join(workDir, "work"), rootUID, rootGID); err != nil {
+		return "", err
+	}
 	mount.path = mergedDir
 	mount.mounted = true
 	d.active[id] = mount
