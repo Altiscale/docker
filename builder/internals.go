@@ -715,25 +715,13 @@ func (b *builder) checkPathForAddition(orig string) error {
 
 func (b *builder) addContext(container *daemon.Container, orig, dest string, decompress bool) error {
 	var (
-		err     error
-		rootUID int
-		rootGID int
-
 		destExists = true
 		origPath   = filepath.Join(b.contextPath, orig)
-		destPath   string
 	)
 
 	// Work in daemon-local OS specific file paths
 	dest = filepath.FromSlash(dest)
-	if b.defaultArchiver != nil {
-		rootUID, rootGID, err = idtools.GetRootUIDGID(b.defaultArchiver.UIDMaps, b.defaultArchiver.GIDMaps)
-		if err != nil {
-			return err
-		}
-	}
-
-	destPath, err = container.GetResourcePath(dest)
+	destPath, err := container.GetResourcePath(dest)
 	if err != nil {
 		return err
 	}
@@ -761,7 +749,7 @@ func (b *builder) addContext(container *daemon.Container, orig, dest string, dec
 	}
 
 	if fi.IsDir() {
-		return copyAsDirectory(origPath, destPath, destExists, rootUID, rootGID, b.defaultArchiver)
+		return copyAsDirectory(origPath, destPath, destExists, b.archiver)
 	}
 
 	// If we are adding a remote file (or we've been told not to decompress), do not try to untar it
@@ -786,14 +774,8 @@ func (b *builder) addContext(container *daemon.Container, orig, dest string, dec
 	if err := system.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 		return err
 	}
-	if b.defaultArchiver != nil {
-		if err := b.defaultArchiver.CopyWithTar(origPath, destPath); err != nil {
-			return err
-		}
-	} else {
-		if err := chrootarchive.CopyWithTar(origPath, destPath); err != nil {
-			return err
-		}
+	if err := b.archiver.CopyWithTar(origPath, destPath); err != nil {
+		return err
 	}
 
 	resPath := destPath
@@ -801,19 +783,23 @@ func (b *builder) addContext(container *daemon.Container, orig, dest string, dec
 		resPath = filepath.Join(destPath, filepath.Base(origPath))
 	}
 
+	rootUID, rootGID, err := idtools.GetRootUIDGID(b.archiver.UIDMaps, b.archiver.GIDMaps)
+	if err != nil {
+		return err
+	}
+
 	return fixPermissions(origPath, resPath, rootUID, rootGID, destExists)
 }
 
-func copyAsDirectory(source, destination string, destExisted bool, rootUID, rootGID int, archiver *archive.Archiver) error {
-	if archiver != nil {
-		if err := archiver.CopyWithTar(source, destination); err != nil {
-			return err
-		}
-	} else {
-		if err := chrootarchive.CopyWithTar(source, destination); err != nil {
-			return err
-		}
+func copyAsDirectory(source, destination string, destExisted bool, archiver *archive.Archiver) error {
+	if err := archiver.CopyWithTar(source, destination); err != nil {
+		return err
 	}
+	rootUID, rootGID, err := idtools.GetRootUIDGID(archiver.UIDMaps, archiver.GIDMaps)
+	if err != nil {
+		return err
+	}
+
 	return fixPermissions(source, destination, rootUID, rootGID, destExisted)
 }
 

@@ -195,16 +195,12 @@ func Build(d *daemon.Daemon, buildConfig *Config) error {
 
 	defer context.Close()
 
-	var defaultArchiver *archive.Archiver
 	uidMaps, gidMaps := d.GetUIDGIDMaps()
-	if uidMaps != nil || gidMaps != nil {
-		defaultArchiver = &archive.Archiver{
-			Untar:   chrootarchive.Untar,
-			UIDMaps: uidMaps,
-			GIDMaps: gidMaps,
-		}
+	defaultArchiver := &archive.Archiver{
+		Untar:   chrootarchive.Untar,
+		UIDMaps: uidMaps,
+		GIDMaps: gidMaps,
 	}
-
 	builder := &builder{
 		Daemon: d,
 		OutStream: &streamformatter.StdoutFormatter{
@@ -237,7 +233,7 @@ func Build(d *daemon.Daemon, buildConfig *Config) error {
 		id:               stringid.GenerateRandomID(),
 		buildArgs:        buildConfig.BuildArgs,
 		allowedBuildArgs: make(map[string]bool),
-		defaultArchiver:  defaultArchiver,
+		archiver:         defaultArchiver,
 	}
 
 	defer func() {
