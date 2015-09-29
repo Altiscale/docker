@@ -17,6 +17,11 @@ func (config *Config) attachExperimentalFlags(cmd *flag.FlagSet, usageFn func(st
 	cmd.StringVar(&config.RemappedRoot, []string{"-root"}, "", usageFn("User/Group setting for container root"))
 }
 
+const (
+	defaultIDSpecifier string = "default"
+	defaultRemappedID  string = "dockroot"
+)
+
 // Parse the remapped root (user namespace) option, which can be one of:
 //   username            - valid username from /etc/passwd
 //   username:groupname  - valid username; valid groupname from /etc/group
@@ -44,25 +49,32 @@ func parseRemappedRoot(usergrp string) (int, int, error) {
 			groupID = userID
 		}
 	} else {
-		luser, err := user.LookupUser(idparts[0])
-		if err != nil && idparts[0] != "default" {
+		lookupID := idparts[0]
+		// special case: if the user specified "default", they want Docker to create or
+		// use (after creation) the "dockroot" user/group for root remapping
+		if lookupID == defaultIDSpecifier {
+			lookupID = defaultRemappedID
+		}
+		luser, err := user.LookupUser(lookupID)
+		if err != nil && idparts[0] != defaultIDSpecifier {
 			// error if the name requested isn't the special "dockroot" ID
-			return 0, 0, fmt.Errorf("Error during uid lookup for %q: %v", idparts[0], err)
+			return 0, 0, fmt.Errorf("Error during uid lookup for %q: %v", lookupID, err)
 		} else if err != nil {
 			// special case-- if the username == "default", then we have been asked
 			// to create a new uid/gid pair in /etc/{passwd,group} to use as the remapped
 			// root UID and GID for this daemon instance
-			if newUID, newGID, err := idtools.AddRemappedRootUser("dockroot"); err == nil {
+			newUID, newGID, err := idtools.AddRemappedRootUser(defaultRemappedID)
+			if err == nil {
 				return newUID, newGID, nil
 			}
-			return 0, 0, fmt.Errorf("Error during 'dockroot' user creation: %v", err)
+			return 0, 0, fmt.Errorf("Error during %q user creation: %v", defaultRemappedID, err)
 		}
 		userID = luser.Uid
 		if len(idparts) == 1 {
 			// we only have a string username, and no group specified; look up gid from username as group
-			group, err := user.LookupGroup(idparts[0])
+			group, err := user.LookupGroup(lookupID)
 			if err != nil {
-				return 0, 0, fmt.Errorf("Error during gid lookup for %q: %v", idparts[0], err)
+				return 0, 0, fmt.Errorf("Error during gid lookup for %q: %v", lookupID, err)
 			}
 			groupID = group.Gid
 		}

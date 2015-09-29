@@ -584,6 +584,10 @@ func Unpack(decompressedArchive io.Reader, dest string, options *TarOptions) err
 	defer pools.BufioReader32KPool.Put(trBuf)
 
 	var dirs []*tar.Header
+	remappedRootUID, remappedRootGID, err := idtools.GetRootUIDGID(options.UIDMaps, options.GIDMaps)
+	if err != nil {
+		return err
+	}
 
 	// Iterate through the files in the archive.
 loop:
@@ -661,22 +665,28 @@ loop:
 		}
 		trBuf.Reset(tr)
 
-		// if the options contain a unique uid, gid for untar, pass them in via the hdr
-		// so lchown sets the requested uid/gid after writing the file
-		if options.UIDMaps != nil {
+		// if the options contain a uid & gid maps, convert header uid/gid
+		// entries using the maps such that lchown sets the proper mapped
+		// uid/gid after writing the file. We only perform this mapping if
+		// the file isn't already owned by the remapped root UID or GID, as
+		// that specific uid/gid has no mapping from container -> host, and
+		// those files already have the proper ownership for inside the
+		// container.
+		if hdr.Uid != remappedRootUID {
 			xUID, err := idtools.TranslateIDToHost(hdr.Uid, options.UIDMaps)
 			if err != nil {
 				return err
 			}
 			hdr.Uid = xUID
 		}
-		if options.GIDMaps != nil {
-			xGid, err := idtools.TranslateIDToHost(hdr.Gid, options.GIDMaps)
+		if hdr.Gid != remappedRootGID {
+			xGID, err := idtools.TranslateIDToHost(hdr.Gid, options.GIDMaps)
 			if err != nil {
 				return err
 			}
-			hdr.Gid = xGid
+			hdr.Gid = xGID
 		}
+
 		if err := createTarFile(path, dest, hdr, trBuf, !options.NoLchown, options.ChownOpts); err != nil {
 			return err
 		}
@@ -855,16 +865,27 @@ func (archiver *Archiver) CopyFileWithTar(src, dst string) (err error) {
 		hdr.Name = filepath.Base(dst)
 		hdr.Mode = int64(chmodTarEntry(os.FileMode(hdr.Mode)))
 
-		xUID, err := idtools.TranslateIDToHost(hdr.Uid, archiver.UIDMaps)
+		remappedRootUID, remappedRootGID, err := idtools.GetRootUIDGID(archiver.UIDMaps, archiver.GIDMaps)
 		if err != nil {
 			return err
 		}
-		xGID, err := idtools.TranslateIDToHost(hdr.Gid, archiver.GIDMaps)
-		if err != nil {
-			return err
+
+		// only perform mapping if the file being copied isn't already owned by the
+		// uid or gid of the remapped root in the container
+		if remappedRootUID != hdr.Uid {
+			xUID, err := idtools.TranslateIDToHost(hdr.Uid, archiver.UIDMaps)
+			if err != nil {
+				return err
+			}
+			hdr.Uid = xUID
 		}
-		hdr.Uid = xUID
-		hdr.Gid = xGID
+		if remappedRootGID != hdr.Gid {
+			xGID, err := idtools.TranslateIDToHost(hdr.Gid, archiver.GIDMaps)
+			if err != nil {
+				return err
+			}
+			hdr.Gid = xGID
+		}
 
 		tw := tar.NewWriter(w)
 		defer tw.Close()

@@ -3,6 +3,7 @@ package idtools
 import (
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 )
@@ -10,7 +11,7 @@ import (
 // add a user and/or group to Linux /etc/passwd, /etc/group using standard
 // Linux distribution commands:
 // adduser --uid <id> --shell /bin/login --no-create-home --disabled-login --gid <gid> <username>
-// useradd -M -u <id> -s /bin/nologin -n -g <gid> <username>
+// useradd -M -u <id> -s /bin/nologin -N -g <gid> <username>
 // addgroup --gid <id> <groupname>
 // groupadd -g <id> <groupname>
 
@@ -24,7 +25,7 @@ var (
 
 	cmdTemplates = map[string]string{
 		"adduser":  "--uid %d --shell /bin/false --no-create-home --disabled-login --gid %d %s",
-		"useradd":  "-M -u %d -s /bin/false -n -g %d %s",
+		"useradd":  "-M -u %d -s /bin/false -N -g %d %s",
 		"addgroup": "--gid %d %s",
 		"groupadd": "-g %d %s",
 	}
@@ -32,16 +33,33 @@ var (
 
 func init() {
 	// set up which commands are used for adding users/groups dependent on distro
-	if _, err := exec.LookPath("adduser"); err == nil {
+	if _, err := resolveBinary("adduser"); err == nil {
 		userCommand = "adduser"
-	} else if _, err := exec.LookPath("useradd"); err == nil {
+	} else if _, err := resolveBinary("useradd"); err == nil {
 		userCommand = "useradd"
 	}
-	if _, err := exec.LookPath("addgroup"); err == nil {
+	if _, err := resolveBinary("addgroup"); err == nil {
 		groupCommand = "addgroup"
-	} else if _, err := exec.LookPath("groupadd"); err == nil {
+	} else if _, err := resolveBinary("groupadd"); err == nil {
 		groupCommand = "groupadd"
 	}
+}
+
+func resolveBinary(binname string) (string, error) {
+	binaryPath, err := exec.LookPath(binname)
+	if err != nil {
+		return "", err
+	}
+	resolvedPath, err := filepath.EvalSymlinks(binaryPath)
+	if err != nil {
+		return "", err
+	}
+	//only return no error if the final resolved binary basename
+	//matches what was searched for
+	if filepath.Base(resolvedPath) == binname {
+		return resolvedPath, nil
+	}
+	return "", fmt.Errorf("Binary %q does not resolve to a binary of that name in $PATH (%q)", binname, resolvedPath)
 }
 
 // AddRemappedRootUser takes a name and finds an unused uid, gid pair

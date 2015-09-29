@@ -25,6 +25,10 @@ func UnpackLayer(dest string, layer Reader, options *TarOptions) (size int64, er
 	defer pools.BufioReader32KPool.Put(trBuf)
 
 	var dirs []*tar.Header
+	remappedRootUID, remappedRootGID, err := idtools.GetRootUIDGID(options.UIDMaps, options.GIDMaps)
+	if err != nil {
+		return 0, err
+	}
 
 	aufsTempdir := ""
 	aufsHardlinks := make(map[string]*tar.Header)
@@ -173,16 +177,21 @@ func UnpackLayer(dest string, layer Reader, options *TarOptions) (size int64, er
 				srcData = tmpFile
 			}
 
-			//if options has a specific uid/gid, then set the hdr uid/gid so that
-			//the Lchown sets the ownership as requested
-			if options.UIDMaps != nil {
+			// if the options contain a uid & gid maps, convert header uid/gid
+			// entries using the maps such that lchown sets the proper mapped
+			// uid/gid after writing the file. We only perform this mapping if
+			// the file isn't already owned by the remapped root UID or GID, as
+			// that specific uid/gid has no mapping from container -> host, and
+			// those files already have the proper ownership for inside the
+			// container.
+			if srcHdr.Uid != remappedRootUID {
 				xUID, err := idtools.TranslateIDToHost(srcHdr.Uid, options.UIDMaps)
 				if err != nil {
 					return 0, err
 				}
 				srcHdr.Uid = xUID
 			}
-			if options.GIDMaps != nil {
+			if srcHdr.Gid != remappedRootGID {
 				xGID, err := idtools.TranslateIDToHost(srcHdr.Gid, options.GIDMaps)
 				if err != nil {
 					return 0, err

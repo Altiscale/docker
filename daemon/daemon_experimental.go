@@ -32,6 +32,12 @@ func setupRemappedRoot(config *Config) ([]idtools.IDMap, []idtools.IDMap, error)
 		if err != nil {
 			return nil, nil, err
 		}
+		if uid == 0 {
+			// Cannot setup user namespaces with a 1-to-1 mapping; "--root=0:0" is a no-op
+			// effectively
+			logrus.Warnf("User namespaces: root cannot be remapped to itself; user namespaces are OFF")
+			return uidMaps, gidMaps, nil
+		}
 		logrus.Infof("User namespaces: root will be remapped to uid:gid: %d:%d", uid, gid)
 
 		uidMaps, gidMaps, err = idtools.CreateIDMapsForRoot(uid, gid)
