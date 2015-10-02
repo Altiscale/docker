@@ -309,6 +309,7 @@ func populateCommand(c *Container, env []string) error {
 		remappedRoot.UID = rootUID
 		remappedRoot.GID = rootGID
 	}
+	uidMap, gidMap := c.daemon.GetUIDGIDMaps()
 
 	c.command = &execdriver.Command{
 		ID:                 c.ID,
@@ -318,6 +319,8 @@ func populateCommand(c *Container, env []string) error {
 		WorkingDir:         c.Config.WorkingDir,
 		Network:            en,
 		Ipc:                ipc,
+		UIDMapping:         uidMap,
+		GIDMapping:         gidMap,
 		RemappedRoot:       remappedRoot,
 		Pid:                pid,
 		UTS:                uts,

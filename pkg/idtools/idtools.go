@@ -1,9 +1,12 @@
 package idtools
 
 import (
+	"bufio"
 	"fmt"
 	"math"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/docker/docker/pkg/system"
 )
@@ -16,6 +19,11 @@ type IDMap struct {
 	HostID      int `json:"host_id"`
 	Size        int `json:"size"`
 }
+
+const (
+	subuidFileName string = "/etc/subuid"
+	subgidFileName string = "/etc/subgid"
+)
 
 // MkdirAllAs creates a directory (include any along the path) and then modifies
 // ownership to the requested uid/gid.  If the directory already exists, this
@@ -31,7 +39,6 @@ func MkdirAs(path string, mode os.FileMode, ownerUID, ownerGID int) error {
 }
 
 func mkdirAs(path string, mode os.FileMode, ownerUID, ownerGID int, mkAll bool) error {
-
 	if mkAll {
 		if err := system.MkdirAll(path, mode); err != nil && !os.IsExist(err) {
 			return err
@@ -54,14 +61,14 @@ func GetRootUIDGID(uidMap, gidMap []IDMap) (int, int, error) {
 	var uid, gid int
 
 	if uidMap != nil {
-		xUID, err := TranslateIDToHost(0, uidMap)
+		xUID, err := ToHost(0, uidMap)
 		if err != nil {
 			return -1, -1, err
 		}
 		uid = xUID
 	}
 	if gidMap != nil {
-		xGID, err := TranslateIDToHost(0, gidMap)
+		xGID, err := ToHost(0, gidMap)
 		if err != nil {
 			return -1, -1, err
 		}
@@ -70,11 +77,10 @@ func GetRootUIDGID(uidMap, gidMap []IDMap) (int, int, error) {
 	return uid, gid, nil
 }
 
-// TranslateIDToContainer takes an id mapping, and uses it to translate a
+// ToContainer takes an id mapping, and uses it to translate a
 // host ID to the remapped ID. If no map is provided, then the translation
 // assumes a 1-to-1 mapping and returns the passed in id
-func TranslateIDToContainer(hostID int, idMap []IDMap) (int, error) {
-
+func ToContainer(hostID int, idMap []IDMap) (int, error) {
 	if idMap == nil {
 		return hostID, nil
 	}
@@ -87,11 +93,10 @@ func TranslateIDToContainer(hostID int, idMap []IDMap) (int, error) {
 	return -1, fmt.Errorf("Host ID %d cannot be mapped to a container ID", hostID)
 }
 
-// TranslateIDToHost takes an id mapping and a remapped ID, and translates the
+// ToHost takes an id mapping and a remapped ID, and translates the
 // ID to the mapped host ID. If no map is provided, then the translation
 // assumes a 1-to-1 mapping and returns the passed in id #
-func TranslateIDToHost(contID int, idMap []IDMap) (int, error) {
-
+func ToHost(contID int, idMap []IDMap) (int, error) {
 	if idMap == nil {
 		return contID, nil
 	}
@@ -104,42 +109,76 @@ func TranslateIDToHost(contID int, idMap []IDMap) (int, error) {
 	return -1, fmt.Errorf("Container ID %d cannot be mapped to a host ID", contID)
 }
 
-// CreateIDMapsForRoot takes a requested remapped uid/gid for root (0,0), and creates
-// the proper mapping set for the rest of the uid/gid range.
-func CreateIDMapsForRoot(uid, gid int) ([]IDMap, []IDMap, error) {
-
-	// Go and libcontainer expect int (32-bit signed) for uids/gids to handle
-	// cross-platform simplicity, so we have to give up on matching Linux
-	// uint32 for uid_t and gid_t values
-	if uid < 1 || gid < 1 {
-		return nil, nil, fmt.Errorf("Cannot create ID maps: uid, gid out of remap range")
+// CreateIDMappings takes a requested user and group name and
+// using the data from /etc/sub{uid,gid} ranges, creates the
+// proper uid and gid remapping ranges for that user/group pair
+func CreateIDMappings(username, groupname string) ([]IDMap, []IDMap, error) {
+	uidStart, uidLength, err := parseSubuid(username)
+	if err != nil {
+		return nil, nil, err
 	}
-	return createIDMap(uid), createIDMap(gid), nil
+	gidStart, gidLength, err := parseSubgid(groupname)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return createIDMap(uidStart, uidLength), createIDMap(gidStart, gidLength), nil
 }
 
-func createIDMap(id int) []IDMap {
+func createIDMap(start, length int) []IDMap {
 	idMap := []IDMap{}
 
-	// The exact id mapping
+	// create a single continguous map of 65536 length (even if
+	// the sub{uid,gid} range is larger) starting at root (0)
 	idMap = append(idMap, IDMap{
 		ContainerID: 0,
-		HostID:      id,
-		Size:        1,
+		HostID:      start,
+		Size:        int(math.Min(65536, float64(length))),
 	})
-
-	// the id mapping from 1 -> id-1
-	idMap = append(idMap, IDMap{
-		ContainerID: 1,
-		HostID:      1,
-		Size:        id - 1,
-	})
-
-	// the id mapping from id+1 -> ID_MAX
-	idMap = append(idMap, IDMap{
-		ContainerID: id + 1,
-		HostID:      id + 1,
-		Size:        math.MaxInt32 - id,
-	})
-
 	return idMap
+}
+
+func parseSubuid(username string) (int, int, error) {
+	return parseSubidFile(subuidFileName, username)
+}
+
+func parseSubgid(username string) (int, int, error) {
+	return parseSubidFile(subgidFileName, username)
+}
+
+func parseSubidFile(path, username string) (int, int, error) {
+	subidFile, err := os.Open(path)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer subidFile.Close()
+
+	s := bufio.NewScanner(subidFile)
+	for s.Scan() {
+		if err := s.Err(); err != nil {
+			return 0, 0, err
+		}
+
+		text := strings.TrimSpace(s.Text())
+		if text == "" {
+			continue
+		}
+		parts := strings.Split(text, ":")
+		if len(parts) != 3 {
+			return 0, 0, fmt.Errorf("Cannot parse subuid/gid information: Format not correct for %s file", path)
+		}
+		if parts[0] == username {
+			// return the first entry for a user; ignores potential for multiple ranges per user
+			startid, err := strconv.Atoi(parts[1])
+			if err != nil {
+				return 0, 0, fmt.Errorf("String to int conversion failed during subuid/gid parsing of %s: %v", path, err)
+			}
+			length, err := strconv.Atoi(parts[2])
+			if err != nil {
+				return 0, 0, fmt.Errorf("String to int conversion failed during subuid/gid parsing of %s: %v", path, err)
+			}
+			return startid, length, nil
+		}
+	}
+	return 0, 0, fmt.Errorf("No subuid/gid information found for %q in %s", username, path)
 }

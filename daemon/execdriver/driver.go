@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/docker/docker/pkg/idtools"
 	// TODO Windows: Factor out ulimit
 	"github.com/docker/docker/pkg/ulimit"
 	"github.com/opencontainers/runc/libcontainer"
@@ -209,6 +210,8 @@ type Command struct {
 	Pid                *Pid              `json:"pid"`
 	UTS                *UTS              `json:"uts"`
 	RemappedRoot       *User             `json:"remap_root"`
+	UIDMapping         []idtools.IDMap   `json:"uidmapping"`
+	GIDMapping         []idtools.IDMap   `json:"gidmapping"`
 	Resources          *Resources        `json:"resources"`
 	Mounts             []Mount           `json:"mounts"`
 	AllowedDevices     []*configs.Device `json:"allowed_devices"`

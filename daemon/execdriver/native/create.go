@@ -10,7 +10,6 @@ import (
 	"syscall"
 
 	"github.com/docker/docker/daemon/execdriver"
-	"github.com/docker/docker/pkg/idtools"
 
 	"github.com/opencontainers/runc/libcontainer/apparmor"
 	"github.com/opencontainers/runc/libcontainer/configs"
@@ -224,18 +223,14 @@ func (d *Driver) setupRemappedRoot(container *configs.Config, c *execdriver.Comm
 		return nil
 	}
 
-	uidMaps, gidMaps, err := idtools.CreateIDMapsForRoot(c.RemappedRoot.UID, c.RemappedRoot.GID)
-	if err != nil {
-		return err
-	}
 	// convert the Docker daemon id map to the libcontainer variant of the same struct
 	// this keeps us from having to import libcontainer code across Docker client + daemon packages
 	cuidMaps := []configs.IDMap{}
 	cgidMaps := []configs.IDMap{}
-	for _, idMap := range uidMaps {
+	for _, idMap := range c.UIDMapping {
 		cuidMaps = append(cuidMaps, configs.IDMap(idMap))
 	}
-	for _, idMap := range gidMaps {
+	for _, idMap := range c.GIDMapping {
 		cgidMaps = append(cgidMaps, configs.IDMap(idMap))
 	}
 	container.UidMappings = cuidMaps

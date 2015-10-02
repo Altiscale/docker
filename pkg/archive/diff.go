@@ -185,14 +185,14 @@ func UnpackLayer(dest string, layer Reader, options *TarOptions) (size int64, er
 			// those files already have the proper ownership for inside the
 			// container.
 			if srcHdr.Uid != remappedRootUID {
-				xUID, err := idtools.TranslateIDToHost(srcHdr.Uid, options.UIDMaps)
+				xUID, err := idtools.ToHost(srcHdr.Uid, options.UIDMaps)
 				if err != nil {
 					return 0, err
 				}
 				srcHdr.Uid = xUID
 			}
 			if srcHdr.Gid != remappedRootGID {
-				xGID, err := idtools.TranslateIDToHost(srcHdr.Gid, options.GIDMaps)
+				xGID, err := idtools.ToHost(srcHdr.Gid, options.GIDMaps)
 				if err != nil {
 					return 0, err
 				}

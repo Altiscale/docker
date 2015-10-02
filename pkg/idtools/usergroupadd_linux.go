@@ -10,8 +10,8 @@ import (
 
 // add a user and/or group to Linux /etc/passwd, /etc/group using standard
 // Linux distribution commands:
-// adduser --uid <id> --shell /bin/login --no-create-home --disabled-login --gid <gid> <username>
-// useradd -M -u <id> -s /bin/nologin -N -g <gid> <username>
+// adduser --uid <id> --shell /bin/login --no-create-home --disabled-login --ingroup <groupname> <username>
+// useradd -M -u <id> -s /bin/nologin -N -g <groupname> <username>
 // addgroup --gid <id> <groupname>
 // groupadd -g <id> <groupname>
 
@@ -24,8 +24,8 @@ var (
 	groupCommand string
 
 	cmdTemplates = map[string]string{
-		"adduser":  "--uid %d --shell /bin/false --no-create-home --disabled-login --gid %d %s",
-		"useradd":  "-M -u %d -s /bin/false -N -g %d %s",
+		"adduser":  "--uid %d --shell /bin/false --no-create-home --disabled-login --ingroup %s %s",
+		"useradd":  "-M -u %d -s /bin/false -N -g %s %s",
 		"addgroup": "--gid %d %s",
 		"groupadd": "-g %d %s",
 	}
@@ -62,11 +62,12 @@ func resolveBinary(binname string) (string, error) {
 	return "", fmt.Errorf("Binary %q does not resolve to a binary of that name in $PATH (%q)", binname, resolvedPath)
 }
 
-// AddRemappedRootUser takes a name and finds an unused uid, gid pair
+// AddNamespaceRangesUser takes a name and finds an unused uid, gid pair
 // and calls the appropriate helper function to add the group and then
 // the user to the group in /etc/group and /etc/passwd respectively.
-// This new user will will be used as the remapped uid/gid pair for root
-func AddRemappedRootUser(name string) (int, int, error) {
+// This new user's /etc/sub{uid,gid} ranges will be used for user namespace
+// mapping ranges in containers.
+func AddNamespaceRangesUser(name string) (int, int, error) {
 	// Find unused uid, gid pair
 	uid, err := findUnusedUID(baseUID)
 	if err != nil {
@@ -82,18 +83,18 @@ func AddRemappedRootUser(name string) (int, int, error) {
 		return -1, -1, fmt.Errorf("Error adding group %q: %v", name, err)
 	}
 	// Add the user as a member of the group
-	if err := addUser(name, uid, gid); err != nil {
+	if err := addUser(name, uid, name); err != nil {
 		return -1, -1, fmt.Errorf("Error adding user %q: %v", name, err)
 	}
 	return uid, gid, nil
 }
 
-func addUser(userName string, uid, gid int) error {
+func addUser(userName string, uid int, groupName string) error {
 
 	if userCommand == "" {
 		return fmt.Errorf("Cannot add user; no useradd/adduser binary found")
 	}
-	args := fmt.Sprintf(cmdTemplates[userCommand], uid, gid, userName)
+	args := fmt.Sprintf(cmdTemplates[userCommand], uid, groupName, userName)
 	return execAddCmd(userCommand, args)
 }
 
@@ -103,7 +104,12 @@ func addGroup(groupName string, gid int) error {
 		return fmt.Errorf("Cannot add group; no groupadd/addgroup binary found")
 	}
 	args := fmt.Sprintf(cmdTemplates[groupCommand], gid, groupName)
-	return execAddCmd(groupCommand, args)
+	// only error out if the error isn't that the group already exists
+	// if the group exists then our needs are already met
+	if err := execAddCmd(groupCommand, args); err != nil && !strings.Contains(err.Error(), "already exists") {
+		return err
+	}
+	return nil
 }
 
 func execAddCmd(cmd, args string) error {

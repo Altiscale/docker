@@ -277,11 +277,11 @@ func (ta *tarAppender) addTarFile(path, name string) error {
 		if err != nil {
 			return err
 		}
-		xUID, err := idtools.TranslateIDToContainer(uid, ta.UIDMaps)
+		xUID, err := idtools.ToContainer(uid, ta.UIDMaps)
 		if err != nil {
 			return err
 		}
-		xGID, err := idtools.TranslateIDToContainer(gid, ta.GIDMaps)
+		xGID, err := idtools.ToContainer(gid, ta.GIDMaps)
 		if err != nil {
 			return err
 		}
@@ -673,14 +673,14 @@ loop:
 		// those files already have the proper ownership for inside the
 		// container.
 		if hdr.Uid != remappedRootUID {
-			xUID, err := idtools.TranslateIDToHost(hdr.Uid, options.UIDMaps)
+			xUID, err := idtools.ToHost(hdr.Uid, options.UIDMaps)
 			if err != nil {
 				return err
 			}
 			hdr.Uid = xUID
 		}
 		if hdr.Gid != remappedRootGID {
-			xGID, err := idtools.TranslateIDToHost(hdr.Gid, options.GIDMaps)
+			xGID, err := idtools.ToHost(hdr.Gid, options.GIDMaps)
 			if err != nil {
 				return err
 			}
@@ -873,14 +873,14 @@ func (archiver *Archiver) CopyFileWithTar(src, dst string) (err error) {
 		// only perform mapping if the file being copied isn't already owned by the
 		// uid or gid of the remapped root in the container
 		if remappedRootUID != hdr.Uid {
-			xUID, err := idtools.TranslateIDToHost(hdr.Uid, archiver.UIDMaps)
+			xUID, err := idtools.ToHost(hdr.Uid, archiver.UIDMaps)
 			if err != nil {
 				return err
 			}
 			hdr.Uid = xUID
 		}
 		if remappedRootGID != hdr.Gid {
-			xGID, err := idtools.TranslateIDToHost(hdr.Gid, archiver.GIDMaps)
+			xGID, err := idtools.ToHost(hdr.Gid, archiver.GIDMaps)
 			if err != nil {
 				return err
 			}
