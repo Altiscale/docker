@@ -66,7 +66,7 @@ func setupDaemonRoot(config *Config, rootDir string, rootUID, rootGID int) error
 				return fmt.Errorf("Cannot create daemon root %q: %v", filepath.Join(rootDir, nsRoot), err)
 			}
 			// 2. move current root content to "0.0" new subroot
-			if err := directory.MoveDirToSubdir(rootDir, nsRoot); err != nil {
+			if err := directory.MoveToSubdir(rootDir, nsRoot); err != nil {
 				return fmt.Errorf("Cannot migrate current daemon root %q for user namespaces: %v", rootDir, err)
 			}
 			// 3. chmod outer root to 755

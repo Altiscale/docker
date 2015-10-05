@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 )
 
-// MoveDirToSubdir moves all contents of a directory to a subdirectory underneath the original path
-func MoveDirToSubdir(oldpath, subdir string) error {
+// MoveToSubdir moves all contents of a directory to a subdirectory underneath the original path
+func MoveToSubdir(oldpath, subdir string) error {
 
 	infos, err := ioutil.ReadDir(oldpath)
 	if err != nil {
