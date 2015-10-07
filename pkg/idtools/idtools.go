@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/docker/docker/pkg/system"
+	"github.com/docker/docker/vendor/src/github.com/opencontainers/runc/libcontainer/user"
 )
 
 // IDMap contains a single entry for user namespace range remapping. An array
@@ -113,50 +114,54 @@ func ToHost(contID int, idMap []IDMap) (int, error) {
 // using the data from /etc/sub{uid,gid} ranges, creates the
 // proper uid and gid remapping ranges for that user/group pair
 func CreateIDMappings(username, groupname string) ([]IDMap, []IDMap, error) {
-	uidStart, uidLength, err := parseSubuid(username)
+	uidMap, err := parseSubuid(username)
 	if err != nil {
 		return nil, nil, err
 	}
-	gidStart, gidLength, err := parseSubgid(groupname)
+	gidMap, err := parseSubgid(groupname)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return createIDMap(uidStart, uidLength), createIDMap(gidStart, gidLength), nil
+	//now need to create a special idmap for root
+	return createIDMap(username, uidMap), createIDMap(username, gidMap), nil
 }
 
-func createIDMap(start, length int) []IDMap {
-	idMap := []IDMap{}
-
+func createIDMap(username string, idMap []IDMap) []IDMap {
+	usr,err := user.LookupUser(username)
+	if err != nil {
+		return nil
+	}
 	// create a single continguous map of 65536 length (even if
 	// the sub{uid,gid} range is larger) starting at root (0)
 	idMap = append(idMap, IDMap{
 		ContainerID: 0,
-		HostID:      start,
-		Size:        int(math.Min(65536, float64(length))),
+		HostID:      usr.Uid,
+		Size:        1,
 	})
 	return idMap
 }
 
-func parseSubuid(username string) (int, int, error) {
+func parseSubuid(username string) ([]IDMap, error) {
 	return parseSubidFile(subuidFileName, username)
 }
 
-func parseSubgid(username string) (int, int, error) {
+func parseSubgid(username string) ([]IDMap, error) {
 	return parseSubidFile(subgidFileName, username)
 }
 
-func parseSubidFile(path, username string) (int, int, error) {
+func parseSubidFile(path, username string) ([]IDMap, error) {
+	idMap := []IDMap{}
 	subidFile, err := os.Open(path)
 	if err != nil {
-		return 0, 0, err
+		return nil, err
 	}
 	defer subidFile.Close()
 
 	s := bufio.NewScanner(subidFile)
 	for s.Scan() {
 		if err := s.Err(); err != nil {
-			return 0, 0, err
+			return nil, err
 		}
 
 		text := strings.TrimSpace(s.Text())
@@ -165,20 +170,28 @@ func parseSubidFile(path, username string) (int, int, error) {
 		}
 		parts := strings.Split(text, ":")
 		if len(parts) != 3 {
-			return 0, 0, fmt.Errorf("Cannot parse subuid/gid information: Format not correct for %s file", path)
+			return nil, fmt.Errorf("Cannot parse subuid/gid information: Format not correct for %s file", path)
+		}
+		usr,err := user.LookupUser(username)
+		if err != nil {
+			return nil, fmt.Errorf("Error parsing user %s: %v", username, err)
 		}
 		if parts[0] == username {
 			// return the first entry for a user; ignores potential for multiple ranges per user
 			startid, err := strconv.Atoi(parts[1])
 			if err != nil {
-				return 0, 0, fmt.Errorf("String to int conversion failed during subuid/gid parsing of %s: %v", path, err)
+				return nil, fmt.Errorf("String to int conversion failed during subuid/gid parsing of %s: %v", path, err)
 			}
 			length, err := strconv.Atoi(parts[2])
 			if err != nil {
-				return 0, 0, fmt.Errorf("String to int conversion failed during subuid/gid parsing of %s: %v", path, err)
+				return nil, fmt.Errorf("String to int conversion failed during subuid/gid parsing of %s: %v", path, err)
 			}
-			return startid, length, nil
+			idMap = append(idMap, IDMap{
+				ContainerID: usr.Uid,
+				HostID:      startid,
+				Size:        int(math.Min(float64(length), float64(length))),
+			})
 		}
 	}
-	return 0, 0, fmt.Errorf("No subuid/gid information found for %q in %s", username, path)
+	return idMap, nil
 }
