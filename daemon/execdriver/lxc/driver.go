@@ -160,7 +160,7 @@ func (d *driver) Run(c *execdriver.Command, pipes *execdriver.Pipes, startCallba
 			"unshare", "-m", "--", "/bin/sh", "-c", shellString,
 		}
 	}
-	logrus.Debugf("lxc params %s", params)
+	log.Debugf("lxc params %s", params)
 	var (
 		name = params[0]
 		arg  = params[1:]
