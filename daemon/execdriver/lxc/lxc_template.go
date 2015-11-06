@@ -55,6 +55,9 @@ lxc.cgroup.devices.allow = {{$allowedDevice.GetCgroupAllowString}}
 # Use mnt.putold as per https://bugs.launchpad.net/ubuntu/+source/lxc/+bug/986385
 lxc.pivotdir = lxc_putold
 
+# lxc.autodev is not compatible with lxc --device switch
+lxc.autodev = 0
+
 # NOTICE: These mounts must be applied within the namespace
 
 # WARNING: mounting procfs and/or sysfs read-write is a known attack vector.
@@ -65,11 +68,11 @@ lxc.mount.entry = proc {{escapeFstabSpaces $ROOTFS}}/proc proc nosuid,nodev,noex
 lxc.mount.entry = sysfs {{escapeFstabSpaces $ROOTFS}}/sys sysfs nosuid,nodev,noexec 0 0
 
 {{if .ProcessConfig.Tty}}
-lxc.mount.entry = {{.ProcessConfig.Console}} {{escapeFstabSpaces $ROOTFS}}/dev/console none bind,rw 0 0
+lxc.mount.entry = {{.ProcessConfig.Console}} {{escapeFstabSpaces $ROOTFS}}/dev/console none bind,rw,create=file 0 0
 {{end}}
 
-lxc.mount.entry = devpts {{escapeFstabSpaces $ROOTFS}}/dev/pts devpts {{formatMountLabel "newinstance,ptmxmode=0666,nosuid,noexec" ""}} 0 0
-lxc.mount.entry = shm {{escapeFstabSpaces $ROOTFS}}/dev/shm tmpfs {{formatMountLabel "size=65536k,nosuid,nodev,noexec" ""}} 0 0
+lxc.mount.entry = devpts {{escapeFstabSpaces $ROOTFS}}/dev/pts devpts {{formatMountLabel "newinstance,ptmxmode=0666,nosuid,noexec,create=dir" ""}} 0 0
+lxc.mount.entry = shm {{escapeFstabSpaces $ROOTFS}}/dev/shm tmpfs {{formatMountLabel "size=65536k,nosuid,nodev,noexec,create=dir" ""}} 0 0
 
 {{range $value := .Mounts}}
 {{$createVal := isDirectory $value.Source}}
