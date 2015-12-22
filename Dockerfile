@@ -30,7 +30,7 @@ MAINTAINER Tianon Gravi <admwiggin@gmail.com> (@tianon)
 # RUN	echo deb http://ppa.launchpad.net/zfs-native/stable/ubuntu trusty main > /etc/apt/sources.list.d/zfs.list
 
 # Packaged dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get --allow-unauthenticated update && apt-get --allow-unauthenticated install -y \
 	apparmor \
 	aufs-tools \
 	automake \
@@ -57,9 +57,9 @@ RUN apt-get update && apt-get install -y \
 	ruby1.9.1 \
 	ruby1.9.1-dev \
 	s3cmd=1.1.0* \
-#	ubuntu-zfs \
+	ubuntu-zfs \
 	xfsprogs \
-#	libzfs-dev \
+	libzfs-dev \
 	--no-install-recommends
 
 # Get lvm2 source for compiling statically
