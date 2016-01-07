@@ -49,10 +49,6 @@ func init() {
 	httpVersion = append(httpVersion, useragent.VersionInfo{"arch", runtime.GOARCH})
 
 	dockerUserAgent = useragent.AppendVersions("", httpVersion...)
-
-	if runtime.GOOS != "linux" {
-		V2Only = true
-	}
 }
 
 func newTLSConfig(hostname string, isSecure bool) (*tls.Config, error) {
