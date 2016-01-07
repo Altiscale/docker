@@ -38,10 +38,10 @@ func (s *Service) Auth(authConfig *cliconfig.AuthConfig) (string, error) {
 	}
 
 	endpointVersion := APIVersion(APIVersionUnknown)
-	if V2Only {
-		// Override the endpoint to only attempt a v2 ping
-		endpointVersion = APIVersion2
-	}
+//	if V2Only {
+//		// Override the endpoint to only attempt a v2 ping
+//		endpointVersion = APIVersion2
+//	}
 
 	endpoint, err := NewEndpoint(index, nil, endpointVersion)
 	if err != nil {
@@ -148,9 +148,9 @@ func (s *Service) lookupEndpoints(repoName string) (endpoints []APIEndpoint, err
 		return nil, err
 	}
 
-	if V2Only {
-		return endpoints, nil
-	}
+//	if V2Only {
+//		return endpoints, nil
+//	}
 
 	legacyEndpoints, err := s.lookupV1Endpoints(repoName)
 	if err != nil {
