@@ -41,7 +41,7 @@ type Puller interface {
 func NewPuller(s *TagStore, endpoint registry.APIEndpoint, repoInfo *registry.RepositoryInfo, imagePullConfig *ImagePullConfig, sf *streamformatter.StreamFormatter) (Puller, error) {
 	switch endpoint.Version {
 	case registry.APIVersion2:
-		return &v2Puller{
+		return &v1Puller{
 			TagStore: s,
 			endpoint: endpoint,
 			config:   imagePullConfig,
