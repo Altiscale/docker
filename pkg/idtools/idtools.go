@@ -135,11 +135,15 @@ func createIDMap(username string, subidRanges ranges) []IDMap {
 	idMap := []IDMap{}
 	usr, err := user.Lookup(username)
 	if err != nil {
-	  return nil
+		return nil
+	}
+	uid, err := strconv.Atoi(usr.Uid)
+	if err != nil {
+		return nil
 	}
 	idMap = append(idMap, IDMap{
 		ContainerID: 0,
-		HostID:      usr.Uid,
+		HostID:      uid,
 		Size:        1,
 	})
 	// sort the ranges by lowest ID first
