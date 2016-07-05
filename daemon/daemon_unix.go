@@ -975,6 +975,8 @@ func setupRemappedRoot(config *Config) ([]idtools.IDMap, []idtools.IDMap, error)
 		config.RemappedRoot = fmt.Sprintf("%s:%s", username, groupname)
 
 		uidMaps, gidMaps, err = idtools.CreateIDMappings(username, groupname)
+		// add remapped root
+
 		if err != nil {
 			return nil, nil, fmt.Errorf("Can't create ID mappings: %v", err)
 		}

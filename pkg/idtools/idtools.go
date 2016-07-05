@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"os/user"
 )
 
 // IDMap contains a single entry for user namespace range remapping. An array
@@ -127,22 +128,28 @@ func CreateIDMappings(username, groupname string) ([]IDMap, []IDMap, error) {
 		return nil, nil, fmt.Errorf("No subgid ranges found for group %q", groupname)
 	}
 
-	return createIDMap(subuidRanges), createIDMap(subgidRanges), nil
+	return createIDMap(username, subuidRanges), createIDMap(groupname, subgidRanges), nil
 }
 
-func createIDMap(subidRanges ranges) []IDMap {
+func createIDMap(username string, subidRanges ranges) []IDMap {
 	idMap := []IDMap{}
-
+	usr, err := user.Lookup(username)
+	if err != nil {
+	  return nil
+	}
+	idMap = append(idMap, IDMap{
+		ContainerID: 0,
+		HostID:      usr.Uid,
+		Size:        1,
+	})
 	// sort the ranges by lowest ID first
 	sort.Sort(subidRanges)
-	containerID := 0
 	for _, idrange := range subidRanges {
 		idMap = append(idMap, IDMap{
-			ContainerID: containerID,
+			ContainerID: idrange.Start,
 			HostID:      idrange.Start,
 			Size:        idrange.Length,
 		})
-		containerID = containerID + idrange.Length
 	}
 	return idMap
 }
