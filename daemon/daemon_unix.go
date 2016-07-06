@@ -976,7 +976,9 @@ func setupRemappedRoot(config *Config) ([]idtools.IDMap, []idtools.IDMap, error)
 
 		uidMaps, gidMaps, err = idtools.CreateIDMappings(username, groupname)
 		// add remapped root
-
+		for key, value := range uidMaps {
+			logrus.Infof("User namespaces: key:val: %s:%s", key, value)
+		}
 		if err != nil {
 			return nil, nil, fmt.Errorf("Can't create ID mappings: %v", err)
 		}
