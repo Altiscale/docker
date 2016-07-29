@@ -20,13 +20,14 @@ import (
 	"github.com/docker/docker/api/server/router/container"
 	"github.com/docker/docker/api/server/router/image"
 	"github.com/docker/docker/api/server/router/network"
+	swarmrouter "github.com/docker/docker/api/server/router/swarm"
 	systemrouter "github.com/docker/docker/api/server/router/system"
 	"github.com/docker/docker/api/server/router/volume"
 	"github.com/docker/docker/builder/dockerfile"
-	"github.com/docker/docker/cli"
 	cliflags "github.com/docker/docker/cli/flags"
 	"github.com/docker/docker/cliconfig"
 	"github.com/docker/docker/daemon"
+	"github.com/docker/docker/daemon/cluster"
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/dockerversion"
 	"github.com/docker/docker/libcontainerd"
@@ -51,8 +52,11 @@ const (
 // DaemonCli represents the daemon CLI.
 type DaemonCli struct {
 	*daemon.Config
-	commonFlags *cli.CommonFlags
+	commonFlags *cliflags.CommonFlags
 	configFile  *string
+
+	api *apiserver.Server
+	d   *daemon.Daemon
 }
 
 func presentInHelp(usage string) string { return usage }
@@ -121,7 +125,10 @@ func migrateKey() (err error) {
 	return nil
 }
 
-func (cli *DaemonCli) start() {
+func (cli *DaemonCli) start() (err error) {
+	stopc := make(chan bool)
+	defer close(stopc)
+
 	// warn from uuid package when running the daemon
 	uuid.Loggerf = logrus.Warnf
 
@@ -133,8 +140,7 @@ func (cli *DaemonCli) start() {
 	}
 	cliConfig, err := loadDaemonCliConfig(cli.Config, flags, cli.commonFlags, *cli.configFile)
 	if err != nil {
-		fmt.Fprint(os.Stderr, err)
-		os.Exit(1)
+		return err
 	}
 	cli.Config = cliConfig
 
@@ -152,24 +158,22 @@ func (cli *DaemonCli) start() {
 	})
 
 	if err := setDefaultUmask(); err != nil {
-		logrus.Fatalf("Failed to set umask: %v", err)
+		return fmt.Errorf("Failed to set umask: %v", err)
 	}
 
 	if len(cli.LogConfig.Config) > 0 {
 		if err := logger.ValidateLogOpts(cli.LogConfig.Type, cli.LogConfig.Config); err != nil {
-			logrus.Fatalf("Failed to set log opts: %v", err)
+			return fmt.Errorf("Failed to set log opts: %v", err)
 		}
 	}
 
-	var pfile *pidfile.PIDFile
 	if cli.Pidfile != "" {
 		pf, err := pidfile.New(cli.Pidfile)
 		if err != nil {
-			logrus.Fatalf("Error starting daemon: %v", err)
+			return fmt.Errorf("Error starting daemon: %v", err)
 		}
-		pfile = pf
 		defer func() {
-			if err := pfile.Remove(); err != nil {
+			if err := pf.Remove(); err != nil {
 				logrus.Error(err)
 			}
 		}()
@@ -196,7 +200,7 @@ func (cli *DaemonCli) start() {
 		}
 		tlsConfig, err := tlsconfig.Server(tlsOptions)
 		if err != nil {
-			logrus.Fatal(err)
+			return err
 		}
 		serverConfig.TLSConfig = tlsConfig
 	}
@@ -206,17 +210,18 @@ func (cli *DaemonCli) start() {
 	}
 
 	api := apiserver.New(serverConfig)
+	cli.api = api
 
 	for i := 0; i < len(cli.Config.Hosts); i++ {
 		var err error
 		if cli.Config.Hosts[i], err = opts.ParseHost(cli.Config.TLS, cli.Config.Hosts[i]); err != nil {
-			logrus.Fatalf("error parsing -H %s : %v", cli.Config.Hosts[i], err)
+			return fmt.Errorf("error parsing -H %s : %v", cli.Config.Hosts[i], err)
 		}
 
 		protoAddr := cli.Config.Hosts[i]
 		protoAddrParts := strings.SplitN(protoAddr, "://", 2)
 		if len(protoAddrParts) != 2 {
-			logrus.Fatalf("bad format %s, expected PROTO://ADDR", protoAddr)
+			return fmt.Errorf("bad format %s, expected PROTO://ADDR", protoAddr)
 		}
 
 		proto := protoAddrParts[0]
@@ -226,39 +231,52 @@ func (cli *DaemonCli) start() {
 		if proto == "tcp" && (serverConfig.TLSConfig == nil || serverConfig.TLSConfig.ClientAuth != tls.RequireAndVerifyClientCert) {
 			logrus.Warn("[!] DON'T BIND ON ANY IP ADDRESS WITHOUT setting -tlsverify IF YOU DON'T KNOW WHAT YOU'RE DOING [!]")
 		}
-		l, err := listeners.Init(proto, addr, serverConfig.SocketGroup, serverConfig.TLSConfig)
+		ls, err := listeners.Init(proto, addr, serverConfig.SocketGroup, serverConfig.TLSConfig)
 		if err != nil {
-			logrus.Fatal(err)
+			return err
 		}
+		ls = wrapListeners(proto, ls)
 		// If we're binding to a TCP port, make sure that a container doesn't try to use it.
 		if proto == "tcp" {
 			if err := allocateDaemonPort(addr); err != nil {
-				logrus.Fatal(err)
+				return err
 			}
 		}
 		logrus.Debugf("Listener created for HTTP on %s (%s)", protoAddrParts[0], protoAddrParts[1])
-		api.Accept(protoAddrParts[1], l...)
+		api.Accept(protoAddrParts[1], ls...)
 	}
 
 	if err := migrateKey(); err != nil {
-		logrus.Fatal(err)
+		return err
 	}
 	cli.TrustKeyPath = cli.commonFlags.TrustKey
 
 	registryService := registry.NewService(cli.Config.ServiceOptions)
 	containerdRemote, err := libcontainerd.New(cli.getLibcontainerdRoot(), cli.getPlatformRemoteOptions()...)
 	if err != nil {
-		logrus.Fatal(err)
+		return err
 	}
+	signal.Trap(func() {
+		cli.stop()
+		<-stopc // wait for daemonCli.start() to return
+	})
 
 	d, err := daemon.NewDaemon(cli.Config, registryService, containerdRemote)
 	if err != nil {
-		if pfile != nil {
-			if err := pfile.Remove(); err != nil {
-				logrus.Error(err)
-			}
-		}
-		logrus.Fatalf("Error starting daemon: %v", err)
+		return fmt.Errorf("Error starting daemon: %v", err)
+	}
+
+	name, _ := os.Hostname()
+
+	c, err := cluster.New(cluster.Config{
+		Root:                   cli.Config.Root,
+		Name:                   name,
+		Backend:                d,
+		NetworkSubnetsProvider: d,
+		DefaultAdvertiseAddr:   cli.Config.SwarmDefaultAdvertiseAddr,
+	})
+	if err != nil {
+		logrus.Fatalf("Error creating cluster component: %v", err)
 	}
 
 	logrus.Info("Daemon has completed initialization")
@@ -270,10 +288,36 @@ func (cli *DaemonCli) start() {
 	}).Info("Docker daemon")
 
 	cli.initMiddlewares(api, serverConfig)
-	initRouter(api, d)
+	initRouter(api, d, c)
 
+	cli.d = d
+	cli.setupConfigReloadTrap()
+
+	// The serve API routine never exits unless an error occurs
+	// We need to start it as a goroutine and wait on it so
+	// daemon doesn't exit
+	serveAPIWait := make(chan error)
+	go api.Wait(serveAPIWait)
+
+	// after the daemon is done setting up we can notify systemd api
+	notifySystem()
+
+	// Daemon is fully initialized and handling API traffic
+	// Wait for serve API to complete
+	errAPI := <-serveAPIWait
+	c.Cleanup()
+	shutdownDaemon(d, 15)
+	containerdRemote.Cleanup()
+	if errAPI != nil {
+		return fmt.Errorf("Shutting down due to ServeAPI error: %v", errAPI)
+	}
+
+	return nil
+}
+
+func (cli *DaemonCli) reloadConfig() {
 	reload := func(config *daemon.Config) {
-		if err := d.Reload(config); err != nil {
+		if err := cli.d.Reload(config); err != nil {
 			logrus.Errorf("Error reconfiguring the daemon: %v", err)
 			return
 		}
@@ -282,50 +326,22 @@ func (cli *DaemonCli) start() {
 			switch {
 			case debugEnabled && !config.Debug: // disable debug
 				utils.DisableDebug()
-				api.DisableProfiler()
+				cli.api.DisableProfiler()
 			case config.Debug && !debugEnabled: // enable debug
 				utils.EnableDebug()
-				api.EnableProfiler()
+				cli.api.EnableProfiler()
 			}
 
 		}
 	}
 
-	setupConfigReloadTrap(*cli.configFile, flags, reload)
-
-	// The serve API routine never exits unless an error occurs
-	// We need to start it as a goroutine and wait on it so
-	// daemon doesn't exit
-	serveAPIWait := make(chan error)
-	go api.Wait(serveAPIWait)
-
-	signal.Trap(func() {
-		api.Close()
-		<-serveAPIWait
-		shutdownDaemon(d, 15)
-		if pfile != nil {
-			if err := pfile.Remove(); err != nil {
-				logrus.Error(err)
-			}
-		}
-	})
-
-	// after the daemon is done setting up we can notify systemd api
-	notifySystem()
-
-	// Daemon is fully initialized and handling API traffic
-	// Wait for serve API to complete
-	errAPI := <-serveAPIWait
-	shutdownDaemon(d, 15)
-	containerdRemote.Cleanup()
-	if errAPI != nil {
-		if pfile != nil {
-			if err := pfile.Remove(); err != nil {
-				logrus.Error(err)
-			}
-		}
-		logrus.Fatalf("Shutting down due to ServeAPI error: %v", errAPI)
+	if err := daemon.ReloadConfiguration(*cli.configFile, flag.CommandLine, reload); err != nil {
+		logrus.Error(err)
 	}
+}
+
+func (cli *DaemonCli) stop() {
+	cli.api.Close()
 }
 
 // shutdownDaemon just wraps daemon.Shutdown() to handle a timeout in case
@@ -345,7 +361,7 @@ func shutdownDaemon(d *daemon.Daemon, timeout time.Duration) {
 	}
 }
 
-func loadDaemonCliConfig(config *daemon.Config, flags *flag.FlagSet, commonConfig *cli.CommonFlags, configFile string) (*daemon.Config, error) {
+func loadDaemonCliConfig(config *daemon.Config, flags *flag.FlagSet, commonConfig *cliflags.CommonFlags, configFile string) (*daemon.Config, error) {
 	config.Debug = commonConfig.Debug
 	config.Hosts = commonConfig.Hosts
 	config.LogLevel = commonConfig.LogLevel
@@ -373,6 +389,10 @@ func loadDaemonCliConfig(config *daemon.Config, flags *flag.FlagSet, commonConfi
 		}
 	}
 
+	if err := daemon.ValidateConfiguration(config); err != nil {
+		return nil, err
+	}
+
 	// Regardless of whether the user sets it to true or false, if they
 	// specify TLSVerify at all then we need to turn on TLS
 	if config.IsValueSet(cliflags.TLSVerifyKey) {
@@ -385,19 +405,21 @@ func loadDaemonCliConfig(config *daemon.Config, flags *flag.FlagSet, commonConfi
 	return config, nil
 }
 
-func initRouter(s *apiserver.Server, d *daemon.Daemon) {
+func initRouter(s *apiserver.Server, d *daemon.Daemon, c *cluster.Cluster) {
 	decoder := runconfig.ContainerDecoder{}
 
 	routers := []router.Router{
 		container.NewRouter(d, decoder),
 		image.NewRouter(d, decoder),
-		systemrouter.NewRouter(d),
+		systemrouter.NewRouter(d, c),
 		volume.NewRouter(d),
 		build.NewRouter(dockerfile.NewBuildManager(d)),
+		swarmrouter.NewRouter(c),
 	}
 	if d.NetworkControllerEnabled() {
-		routers = append(routers, network.NewRouter(d))
+		routers = append(routers, network.NewRouter(d, c))
 	}
+	routers = addExperimentalRouters(routers)
 
 	s.InitRouter(utils.IsDebugEnabled(), routers...)
 }

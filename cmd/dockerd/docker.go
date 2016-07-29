@@ -31,7 +31,7 @@ func main() {
 	flag.Merge(flag.CommandLine, daemonCli.commonFlags.FlagSet)
 
 	flag.Usage = func() {
-		fmt.Fprint(stdout, "Usage: dockerd [ --help | -v | --version ]\n\n")
+		fmt.Fprint(stdout, "Usage: dockerd [OPTIONS]\n\n")
 		fmt.Fprint(stdout, "A self-sufficient runtime for containers.\n\nOptions:\n")
 
 		flag.CommandLine.SetOutput(stdout)
@@ -56,7 +56,21 @@ func main() {
 		flag.Usage()
 		return
 	}
-	daemonCli.start()
+
+	// On Windows, this may be launching as a service or with an option to
+	// register the service.
+	stop, err := initService()
+	if err != nil {
+		logrus.Fatal(err)
+	}
+
+	if !stop {
+		err = daemonCli.start()
+		notifyShutdown(err)
+		if err != nil {
+			logrus.Fatal(err)
+		}
+	}
 }
 
 func showVersion() {

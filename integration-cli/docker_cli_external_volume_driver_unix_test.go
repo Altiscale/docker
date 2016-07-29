@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/pkg/integration/checker"
+	"github.com/docker/docker/volume"
 	"github.com/docker/engine-api/types"
 	"github.com/go-check/check"
 )
@@ -35,6 +36,7 @@ type eventCounter struct {
 	paths       int
 	lists       int
 	gets        int
+	caps        int
 }
 
 type DockerExternalVolumeSuite struct {
@@ -61,6 +63,7 @@ func (s *DockerExternalVolumeSuite) SetUpSuite(c *check.C) {
 	type pluginRequest struct {
 		Name string
 		Opts map[string]string
+		ID   string
 	}
 
 	type pluginResp struct {
@@ -71,7 +74,7 @@ func (s *DockerExternalVolumeSuite) SetUpSuite(c *check.C) {
 	type vol struct {
 		Name       string
 		Mountpoint string
-		Ninja      bool // hack used to trigger an null volume return on `Get`
+		Ninja      bool // hack used to trigger a null volume return on `Get`
 		Status     map[string]interface{}
 	}
 	var volList []vol
@@ -204,6 +207,11 @@ func (s *DockerExternalVolumeSuite) SetUpSuite(c *check.C) {
 			return
 		}
 
+		if err := ioutil.WriteFile(filepath.Join(p, "mountID"), []byte(pr.ID), 0644); err != nil {
+			send(w, err)
+			return
+		}
+
 		send(w, &pluginResp{Mountpoint: p})
 	})
 
@@ -217,6 +225,18 @@ func (s *DockerExternalVolumeSuite) SetUpSuite(c *check.C) {
 		}
 
 		send(w, nil)
+	})
+
+	mux.HandleFunc("/VolumeDriver.Capabilities", func(w http.ResponseWriter, r *http.Request) {
+		s.ec.caps++
+
+		_, err := read(r.Body)
+		if err != nil {
+			send(w, err)
+			return
+		}
+
+		send(w, `{"Capabilities": { "Scope": "global" }}`)
 	})
 
 	err := os.MkdirAll("/etc/docker/plugins", 0755)
@@ -437,7 +457,7 @@ func (s *DockerExternalVolumeSuite) TestExternalVolumeDriverGet(c *check.C) {
 	c.Assert(st[0].Status["Hello"], checker.Equals, "world", check.Commentf("%v", st[0].Status))
 }
 
-func (s *DockerExternalVolumeSuite) TestExternalVolumeDriverWithDaemnRestart(c *check.C) {
+func (s *DockerExternalVolumeSuite) TestExternalVolumeDriverWithDaemonRestart(c *check.C) {
 	dockerCmd(c, "volume", "create", "-d", "test-external-volume-driver", "--name", "abc1")
 	err := s.d.Restart()
 	c.Assert(err, checker.IsNil)
@@ -452,8 +472,12 @@ func (s *DockerExternalVolumeSuite) TestExternalVolumeDriverWithDaemnRestart(c *
 // Ensures that the daemon handles when the plugin responds to a `Get` request with a null volume and a null error.
 // Prior the daemon would panic in this scenario.
 func (s *DockerExternalVolumeSuite) TestExternalVolumeDriverGetEmptyResponse(c *check.C) {
-	dockerCmd(c, "volume", "create", "-d", "test-external-volume-driver", "--name", "abc2", "--opt", "ninja=1")
-	out, _, err := dockerCmdWithError("volume", "inspect", "abc2")
+	c.Assert(s.d.Start(), checker.IsNil)
+
+	out, err := s.d.Cmd("volume", "create", "-d", "test-external-volume-driver", "--name", "abc2", "--opt", "ninja=1")
+	c.Assert(err, checker.IsNil, check.Commentf(out))
+
+	out, err = s.d.Cmd("volume", "inspect", "abc2")
 	c.Assert(err, checker.NotNil, check.Commentf(out))
 	c.Assert(out, checker.Contains, "No such volume")
 }
@@ -475,4 +499,28 @@ func (s *DockerExternalVolumeSuite) TestExternalVolumeDriverPathCalls(c *check.C
 	c.Assert(err, checker.IsNil, check.Commentf(out))
 	c.Assert(strings.TrimSpace(out), checker.Not(checker.Equals), "")
 	c.Assert(s.ec.paths, checker.Equals, 1)
+}
+
+func (s *DockerExternalVolumeSuite) TestExternalVolumeDriverMountID(c *check.C) {
+	err := s.d.StartWithBusybox()
+	c.Assert(err, checker.IsNil)
+
+	out, err := s.d.Cmd("run", "--rm", "-v", "external-volume-test:/tmp/external-volume-test", "--volume-driver", "test-external-volume-driver", "busybox:latest", "cat", "/tmp/external-volume-test/test")
+	c.Assert(err, checker.IsNil, check.Commentf(out))
+	c.Assert(strings.TrimSpace(out), checker.Not(checker.Equals), "")
+}
+
+// Check that VolumeDriver.Capabilities gets called, and only called once
+func (s *DockerExternalVolumeSuite) TestExternalVolumeDriverCapabilities(c *check.C) {
+	c.Assert(s.d.Start(), checker.IsNil)
+	c.Assert(s.ec.caps, checker.Equals, 0)
+
+	for i := 0; i < 3; i++ {
+		out, err := s.d.Cmd("volume", "create", "-d", "test-external-volume-driver", "--name", fmt.Sprintf("test%d", i))
+		c.Assert(err, checker.IsNil, check.Commentf(out))
+		c.Assert(s.ec.caps, checker.Equals, 1)
+		out, err = s.d.Cmd("volume", "inspect", "--format={{.Scope}}", fmt.Sprintf("test%d", i))
+		c.Assert(err, checker.IsNil)
+		c.Assert(strings.TrimSpace(out), checker.Equals, volume.GlobalScope)
+	}
 }

@@ -10,16 +10,22 @@ parent = "smn_cli"
 
 # volume ls
 
-    Usage: docker volume ls [OPTIONS]
+```markdown
+Usage:  docker volume ls [OPTIONS]
 
-    List volumes
+List volumes
 
-      -f, --filter=[]      Filter output based on these conditions:
-                           - dangling=<boolean> a volume if referenced or not
-                           - driver=<string> a volume's driver name
-                           - name=<string> a volume's name
-      --help               Print usage
-      -q, --quiet          Only display volume names
+Aliases:
+  ls, list
+
+Options:
+  -f, --filter value   Provide filter values (i.e. 'dangling=true') (default [])
+                       - dangling=<boolean> a volume if referenced or not
+                       - driver=<string> a volume's driver name
+                       - name=<string> a volume's name
+      --help           Print usage
+  -q, --quiet          Only display volume names
+```
 
 Lists all the volumes Docker knows about. You can filter using the `-f` or `--filter` flag. Refer to the [filtering](#filtering) section for more information about available filter options.
 
@@ -81,4 +87,4 @@ The following filter matches all volumes with a name containing the `rose` strin
 * [volume create](volume_create.md)
 * [volume inspect](volume_inspect.md)
 * [volume rm](volume_rm.md)
-* [Understand Data Volumes](../../userguide/containers/dockervolumes.md)
+* [Understand Data Volumes](../../tutorials/dockervolumes.md)

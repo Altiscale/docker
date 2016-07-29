@@ -134,7 +134,7 @@ func (s *DockerSuite) TestRmiImgIDForce(c *check.C) {
 	// rmi tagged in multiple repos should have failed without force
 	c.Assert(err, checker.NotNil)
 	// rmi tagged in multiple repos should have failed without force
-	c.Assert(out, checker.Contains, "(must be forced) - image is referenced in one or more repositories", check.Commentf("out: %s; err: %v;", out, err))
+	c.Assert(out, checker.Contains, "(must be forced) - image is referenced in multiple repositories", check.Commentf("out: %s; err: %v;", out, err))
 
 	dockerCmd(c, "rmi", "-f", imgID)
 	{
@@ -226,18 +226,11 @@ func (s *DockerSuite) TestRmiForceWithMultipleRepositories(c *check.C) {
 }
 
 func (s *DockerSuite) TestRmiBlank(c *check.C) {
-	// try to delete a blank image name
-	out, _, err := dockerCmdWithError("rmi", "")
-	// Should have failed to delete '' image
+	out, _, err := dockerCmdWithError("rmi", " ")
+	// Should have failed to delete ' ' image
 	c.Assert(err, checker.NotNil)
 	// Wrong error message generated
 	c.Assert(out, checker.Not(checker.Contains), "no such id", check.Commentf("out: %s", out))
-	// Expected error message not generated
-	c.Assert(out, checker.Contains, "image name cannot be blank", check.Commentf("out: %s", out))
-
-	out, _, err = dockerCmdWithError("rmi", " ")
-	// Should have failed to delete ' ' image
-	c.Assert(err, checker.NotNil)
 	// Expected error message not generated
 	c.Assert(out, checker.Contains, "image name cannot be blank", check.Commentf("out: %s", out))
 }
@@ -270,7 +263,7 @@ func (s *DockerSuite) TestRmiContainerImageNotFound(c *check.C) {
 // #13422
 func (s *DockerSuite) TestRmiUntagHistoryLayer(c *check.C) {
 	image := "tmp1"
-	// Build a image for testing.
+	// Build an image for testing.
 	dockerfile := `FROM busybox
 MAINTAINER foo
 RUN echo 0 #layer0

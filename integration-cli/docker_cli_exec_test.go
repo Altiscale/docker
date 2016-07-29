@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -182,7 +183,10 @@ func (s *DockerSuite) TestExecTTYWithoutStdin(c *check.C) {
 			return
 		}
 
-		expected := "cannot enable tty mode"
+		expected := "the input device is not a TTY"
+		if runtime.GOOS == "windows" {
+			expected += ".  If you are using mintty, try prefixing the command with 'winpty'"
+		}
 		if out, _, err := runCommandWithOutput(cmd); err == nil {
 			errChan <- fmt.Errorf("exec should have failed")
 			return
@@ -210,7 +214,7 @@ func (s *DockerSuite) TestExecParseError(c *check.C) {
 	cmd := exec.Command(dockerBinary, "exec", "top")
 	_, stderr, _, err := runCommandWithStdoutStderr(cmd)
 	c.Assert(err, checker.NotNil)
-	c.Assert(stderr, checker.Contains, "See '"+dockerBinary+" exec --help'")
+	c.Assert(stderr, checker.Contains, "See 'docker exec --help'")
 }
 
 func (s *DockerSuite) TestExecStopNotHanging(c *check.C) {

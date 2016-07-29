@@ -55,6 +55,21 @@ func (daemon *Daemon) LogImageEventWithAttributes(imageID, refName, action strin
 	daemon.EventsService.Log(action, events.ImageEventType, actor)
 }
 
+// LogPluginEvent generates an event related to a plugin with only the default attributes.
+func (daemon *Daemon) LogPluginEvent(pluginID, refName, action string) {
+	daemon.LogPluginEventWithAttributes(pluginID, refName, action, map[string]string{})
+}
+
+// LogPluginEventWithAttributes generates an event related to a plugin with specific given attributes.
+func (daemon *Daemon) LogPluginEventWithAttributes(pluginID, refName, action string, attributes map[string]string) {
+	attributes["name"] = refName
+	actor := events.Actor{
+		ID:         pluginID,
+		Attributes: attributes,
+	}
+	daemon.EventsService.Log(action, events.PluginEventType, actor)
+}
+
 // LogVolumeEvent generates an event related to a volume.
 func (daemon *Daemon) LogVolumeEvent(volumeID, action string, attributes map[string]string) {
 	actor := events.Actor{
@@ -78,6 +93,20 @@ func (daemon *Daemon) LogNetworkEventWithAttributes(nw libnetwork.Network, actio
 		Attributes: attributes,
 	}
 	daemon.EventsService.Log(action, events.NetworkEventType, actor)
+}
+
+// LogDaemonEventWithAttributes generates an event related to the daemon itself with specific given attributes.
+func (daemon *Daemon) LogDaemonEventWithAttributes(action string, attributes map[string]string) {
+	if daemon.EventsService != nil {
+		if info, err := daemon.SystemInfo(); err == nil && info.Name != "" {
+			attributes["name"] = info.Name
+		}
+		actor := events.Actor{
+			ID:         daemon.ID,
+			Attributes: attributes,
+		}
+		daemon.EventsService.Log(action, events.DaemonEventType, actor)
+	}
 }
 
 // SubscribeToEvents returns the currently record of events, a channel to stream new events from, and a function to cancel the stream of events.

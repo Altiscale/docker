@@ -1,4 +1,4 @@
-// +build !windows
+// +build !windows,!solaris
 
 package main
 
@@ -11,10 +11,9 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/docker/docker/cmd/dockerd/hack"
 	"github.com/docker/docker/daemon"
 	"github.com/docker/docker/libcontainerd"
-	"github.com/docker/docker/pkg/mflag"
 	"github.com/docker/docker/pkg/system"
 	"github.com/docker/libnetwork/portallocator"
 )
@@ -49,14 +48,12 @@ func getDaemonConfDir() string {
 }
 
 // setupConfigReloadTrap configures the USR2 signal to reload the configuration.
-func setupConfigReloadTrap(configFile string, flags *mflag.FlagSet, reload func(*daemon.Config)) {
+func (cli *DaemonCli) setupConfigReloadTrap() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGHUP)
 	go func() {
 		for range c {
-			if err := daemon.ReloadConfiguration(configFile, flags, reload); err != nil {
-				logrus.Error(err)
-			}
+			cli.reloadConfig()
 		}
 	}()
 }
@@ -64,6 +61,7 @@ func setupConfigReloadTrap(configFile string, flags *mflag.FlagSet, reload func(
 func (cli *DaemonCli) getPlatformRemoteOptions() []libcontainerd.RemoteOption {
 	opts := []libcontainerd.RemoteOption{
 		libcontainerd.WithDebugLog(cli.Config.Debug),
+		libcontainerd.WithOOMScore(cli.Config.OOMScoreAdjust),
 	}
 	if cli.Config.ContainerdAddr != "" {
 		opts = append(opts, libcontainerd.WithRemoteAddr(cli.Config.ContainerdAddr))
@@ -74,6 +72,10 @@ func (cli *DaemonCli) getPlatformRemoteOptions() []libcontainerd.RemoteOption {
 		args := []string{"--systemd-cgroup=true"}
 		opts = append(opts, libcontainerd.WithRuntimeArgs(args))
 	}
+	if cli.Config.LiveRestoreEnabled {
+		opts = append(opts, libcontainerd.WithLiveRestore(true))
+	}
+	opts = append(opts, libcontainerd.WithRuntimePath(daemon.DefaultRuntimeBinary))
 	return opts
 }
 
@@ -110,4 +112,20 @@ func allocateDaemonPort(addr string) error {
 		}
 	}
 	return nil
+}
+
+// notifyShutdown is called after the daemon shuts down but before the process exits.
+func notifyShutdown(err error) {
+}
+
+func wrapListeners(proto string, ls []net.Listener) []net.Listener {
+	switch proto {
+	case "unix":
+		ls[0] = &hack.MalformedHostHeaderOverride{ls[0]}
+	case "fd":
+		for i := range ls {
+			ls[i] = &hack.MalformedHostHeaderOverride{ls[i]}
+		}
+	}
+	return ls
 }

@@ -2,11 +2,13 @@ package network
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"golang.org/x/net/context"
 
 	"github.com/docker/docker/api/server/httputils"
+	"github.com/docker/docker/errors"
 	"github.com/docker/engine-api/types"
 	"github.com/docker/engine-api/types/filters"
 	"github.com/docker/engine-api/types/network"
@@ -24,17 +26,30 @@ func (n *networkRouter) getNetworksList(ctx context.Context, w http.ResponseWrit
 		return err
 	}
 
-	list := []*types.NetworkResource{}
+	list := []types.NetworkResource{}
 
-	nwList, err := n.backend.FilterNetworks(netFilters)
+	if nr, err := n.clusterProvider.GetNetworks(); err == nil {
+		for _, nw := range nr {
+			list = append(list, nw)
+		}
+	}
+
+	// Combine the network list returned by Docker daemon if it is not already
+	// returned by the cluster manager
+SKIP:
+	for _, nw := range n.backend.GetNetworks() {
+		for _, nl := range list {
+			if nl.ID == nw.ID() {
+				continue SKIP
+			}
+		}
+		list = append(list, *n.buildNetworkResource(nw))
+	}
+
+	list, err = filterNetworks(list, netFilters)
 	if err != nil {
 		return err
 	}
-
-	for _, nw := range nwList {
-		list = append(list, buildNetworkResource(nw))
-	}
-
 	return httputils.WriteJSON(w, http.StatusOK, list)
 }
 
@@ -45,9 +60,12 @@ func (n *networkRouter) getNetwork(ctx context.Context, w http.ResponseWriter, r
 
 	nw, err := n.backend.FindNetwork(vars["id"])
 	if err != nil {
+		if nr, err := n.clusterProvider.GetNetwork(vars["id"]); err == nil {
+			return httputils.WriteJSON(w, http.StatusOK, nr)
+		}
 		return err
 	}
-	return httputils.WriteJSON(w, http.StatusOK, buildNetworkResource(nw))
+	return httputils.WriteJSON(w, http.StatusOK, n.buildNetworkResource(nw))
 }
 
 func (n *networkRouter) postNetworkCreate(ctx context.Context, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
@@ -65,9 +83,20 @@ func (n *networkRouter) postNetworkCreate(ctx context.Context, w http.ResponseWr
 		return err
 	}
 
+	if _, err := n.clusterProvider.GetNetwork(create.Name); err == nil {
+		return libnetwork.NetworkNameError(create.Name)
+	}
+
 	nw, err := n.backend.CreateNetwork(create)
 	if err != nil {
-		return err
+		if _, ok := err.(libnetwork.ManagerRedirectError); !ok {
+			return err
+		}
+		id, err := n.clusterProvider.CreateNetwork(create)
+		if err != nil {
+			return err
+		}
+		nw = &types.NetworkCreateResponse{ID: id}
 	}
 
 	return httputils.WriteJSON(w, http.StatusCreated, nw)
@@ -92,6 +121,11 @@ func (n *networkRouter) postNetworkConnect(ctx context.Context, w http.ResponseW
 		return err
 	}
 
+	if nw.Info().Dynamic() {
+		err := fmt.Errorf("operation not supported for swarm scoped networks")
+		return errors.NewRequestForbiddenError(err)
+	}
+
 	return n.backend.ConnectContainerToNetwork(connect.Container, nw.Name(), connect.EndpointConfig)
 }
 
@@ -114,12 +148,20 @@ func (n *networkRouter) postNetworkDisconnect(ctx context.Context, w http.Respon
 		return err
 	}
 
+	if nw.Info().Dynamic() {
+		err := fmt.Errorf("operation not supported for swarm scoped networks")
+		return errors.NewRequestForbiddenError(err)
+	}
+
 	return n.backend.DisconnectContainerFromNetwork(disconnect.Container, nw, disconnect.Force)
 }
 
 func (n *networkRouter) deleteNetwork(ctx context.Context, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
 	if err := httputils.ParseForm(r); err != nil {
 		return err
+	}
+	if _, err := n.clusterProvider.GetNetwork(vars["id"]); err == nil {
+		return n.clusterProvider.RemoveNetwork(vars["id"])
 	}
 	if err := n.backend.DeleteNetwork(vars["id"]); err != nil {
 		return err
@@ -128,7 +170,7 @@ func (n *networkRouter) deleteNetwork(ctx context.Context, w http.ResponseWriter
 	return nil
 }
 
-func buildNetworkResource(nw libnetwork.Network) *types.NetworkResource {
+func (n *networkRouter) buildNetworkResource(nw libnetwork.Network) *types.NetworkResource {
 	r := &types.NetworkResource{}
 	if nw == nil {
 		return r
@@ -138,6 +180,13 @@ func buildNetworkResource(nw libnetwork.Network) *types.NetworkResource {
 	r.Name = nw.Name()
 	r.ID = nw.ID()
 	r.Scope = info.Scope()
+	if n.clusterProvider.IsManager() {
+		if _, err := n.clusterProvider.GetNetwork(nw.Name()); err == nil {
+			r.Scope = "swarm"
+		}
+	} else if info.Dynamic() {
+		r.Scope = "swarm"
+	}
 	r.Driver = nw.Type()
 	r.EnableIPv6 = info.IPv6Enabled()
 	r.Internal = info.Internal()

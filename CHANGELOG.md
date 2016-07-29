@@ -5,6 +5,26 @@ information on the list of deprecated flags and APIs please have a look at
 https://docs.docker.com/engine/deprecated/ where target removal dates can also
 be found.
 
+## 1.11.2 (2016-05-31)
+
+### Networking
+
+- Fix a stale endpoint issue on overlay networks during ungraceful restart ([#23015](https://github.com/docker/docker/pull/23015))
+- Fix an issue where the wrong port could be reported by `docker inspect/ps/port` ([#22997](https://github.com/docker/docker/pull/22997))
+
+### Runtime
+
+- Fix a potential panic when running `docker build` ([#23032](https://github.com/docker/docker/pull/23032))
+- Fix interpretation of `--user` parameter ([#22998](https://github.com/docker/docker/pull/22998))
+- Fix a bug preventing container statistics to be correctly reported ([#22955](https://github.com/docker/docker/pull/22955))
+- Fix an issue preventing container to be restarted after daemon restart ([#22947](https://github.com/docker/docker/pull/22947))
+- Fix issues when running 32 bit binaries on Ubuntu 16.04 ([#22922](https://github.com/docker/docker/pull/22922))
+- Fix a possible deadlock on image deletion and container attach ([#22918](https://github.com/docker/docker/pull/22918))
+- Fix an issue where containers fail to start after a daemon restart if they depend on a containerized cluster store ([#22561](https://github.com/docker/docker/pull/22561))
+- Fix an issue causing `docker ps` to hang on CentOS when using devicemapper ([#22168](https://github.com/docker/docker/pull/22168), [#23067](https://github.com/docker/docker/pull/23067))
+- Fix a bug preventing to `docker exec` into a container when using devicemapper ([#22168](https://github.com/docker/docker/pull/22168), [#23067](https://github.com/docker/docker/pull/23067))
+
+
 ## 1.11.1 (2016-04-26)
 
 ### Distribution
@@ -31,13 +51,13 @@ be found.
 - Fix an issue where it would be impossible to update both `memory-swap` and `memory` value together ([#22255](https://github.com/docker/docker/pull/22255))
 - Fix a regression from 1.11.0 where the `/auth` endpoint would not initialize `serveraddress` if it is not provided ([#22254](https://github.com/docker/docker/pull/22254))
 - Add missing cleanup of container temporary files when cancelling a schedule restart ([#22237](https://github.com/docker/docker/pull/22237))
-- Removed scary error message when no restart policy is specified ([#21993](https://github.com/docker/docker/pull/21993))
+- Remove scary error message when no restart policy is specified ([#21993](https://github.com/docker/docker/pull/21993))
 - Fix a panic that would occur when the plugins were activated via the json spec ([#22191](https://github.com/docker/docker/pull/22191))
 - Fix restart backoff logic to correctly reset delay if container ran for at least 10secs ([#22125](https://github.com/docker/docker/pull/22125))
 - Remove error message when a container restart get cancelled ([#22123](https://github.com/docker/docker/pull/22123))
-- Fix an issue where `docker` would not correcly clean up after `docker exec` ([#22121](https://github.com/docker/docker/pull/22121))
-- Fix a panic that could occur when servicing concurrent `docker stats` commands ([#22120](https://github.com/docker/docker/pull/22120))`
-- Revert deprecation of non-existing host directories auto-creation ([#22065](https://github.com/docker/docker/pull/22065))
+- Fix an issue where `docker` would not correctly clean up after `docker exec` ([#22121](https://github.com/docker/docker/pull/22121))
+- Fix a panic that could occur when serving concurrent `docker stats` commands ([#22120](https://github.com/docker/docker/pull/22120))`
+- Revert deprecation of non-existent host directories auto-creation ([#22065](https://github.com/docker/docker/pull/22065))
 - Hide misleading rpc error on daemon shutdown ([#22058](https://github.com/docker/docker/pull/22058))
 
 ## 1.11.0 (2016-04-13)
@@ -96,7 +116,7 @@ be found.
 
 ### Misc
 
-+ When saving linked images together with `docker save` a subsequent `docker load` will correctly restore their parent/child relationship ([#21385](https://github.com/docker/docker/pull/c))
++ When saving linked images together with `docker save` a subsequent `docker load` will correctly restore their parent/child relationship ([#21385](https://github.com/docker/docker/pull/21385))
 + Support for building the Docker cli for OpenBSD was added ([#21325](https://github.com/docker/docker/pull/21325))
 + Labels can now be applied at network, volume and image creation ([#21270](https://github.com/docker/docker/pull/21270))
 * The `dockremap` is now created as a system user ([#21266](https://github.com/docker/docker/pull/21266))
@@ -871,7 +891,7 @@ by another client (#15489)
 #### Security
 - Fix tar breakout vulnerability
 * Extractions are now sandboxed chroot
-- Security options are no longer committed to images
+- Security options are no longer comitted to images
 
 #### Runtime
 - Fix deadlock in `docker ps -f exited=1`
@@ -1080,7 +1100,7 @@ by another client (#15489)
 
 #### Runtime
 * Support hairpin NAT without going through Docker server.
-- devicemapper: succeed immediately when removing non-existing devices.
+- devicemapper: succeed immediately when removing non-existent devices.
 - devicemapper: improve handling of devicemapper devices (add per device lock, increase sleep time and unlock while sleeping).
 - devicemapper: increase timeout in waitClose to 10 seconds.
 - devicemapper: ensure we shut down thin pool cleanly.
@@ -1201,7 +1221,7 @@ by another client (#15489)
 - Improve deprecation message.
 - Fix attach exit on darwin.
 - devicemapper: improve handling of devicemapper devices (add per device lock, increase sleep time, unlock while sleeping).
-- devicemapper: succeed immediately when removing non-existing devices.
+- devicemapper: succeed immediately when removing non-existent devices.
 - devicemapper: increase timeout in waitClose to 10 seconds.
 - Remove goroutine leak on error.
 - Update parseLxcInfo to comply with new lxc1.0 format.
@@ -1297,7 +1317,7 @@ by another client (#15489)
 * Update issue filing instructions
 * Warn against the use of symlinks for Docker's storage folder
 * Replace the Firefox example with an IceWeasel example
-* Rewrite the PostgresSQL example using a Dockerfile and add more details to it
+* Rewrite the PostgreSQL example using a Dockerfile and add more details to it
 * Improve the OS X documentation
 
 #### Remote API
@@ -1721,7 +1741,7 @@ With the ongoing changes to the networking and execution subsystems of docker te
 + Add -rm to docker run for removing a container on exit
 - Remove error messages which are not actually errors
 - Fix `docker rm` with volumes
-- Fix some error cases where a HTTP body might not be closed
+- Fix some error cases where an HTTP body might not be closed
 - Fix panic with wrong dockercfg file
 - Fix the attach behavior with -i
 * Record termination time in state.

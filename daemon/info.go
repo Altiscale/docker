@@ -51,6 +51,7 @@ func (daemon *Daemon) SystemInfo() (*types.Info, error) {
 	meminfo, err := system.ReadMemInfo()
 	if err != nil {
 		logrus.Errorf("Could not read system memory info: %v", err)
+		meminfo = &system.MemInfo{}
 	}
 
 	sysInfo := sysinfo.New(true)
@@ -71,7 +72,7 @@ func (daemon *Daemon) SystemInfo() (*types.Info, error) {
 	if sysInfo.AppArmor {
 		securityOptions = append(securityOptions, "apparmor")
 	}
-	if sysInfo.Seccomp {
+	if sysInfo.Seccomp && supportsSeccomp {
 		securityOptions = append(securityOptions, "seccomp")
 	}
 	if selinuxEnabled() {
@@ -104,7 +105,7 @@ func (daemon *Daemon) SystemInfo() (*types.Info, error) {
 		OSType:             platform.OSType,
 		Architecture:       platform.Architecture,
 		RegistryConfig:     daemon.RegistryService.ServiceConfig(),
-		NCPU:               runtime.NumCPU(),
+		NCPU:               sysinfo.NumCPU(),
 		MemTotal:           meminfo.MemTotal,
 		DockerRootDir:      daemon.configStore.Root,
 		Labels:             daemon.configStore.Labels,
@@ -116,6 +117,7 @@ func (daemon *Daemon) SystemInfo() (*types.Info, error) {
 		HTTPSProxy:         sockets.GetProxyEnv("https_proxy"),
 		NoProxy:            sockets.GetProxyEnv("no_proxy"),
 		SecurityOptions:    securityOptions,
+		LiveRestoreEnabled: daemon.configStore.LiveRestoreEnabled,
 	}
 
 	// TODO Windows. Refactor this more once sysinfo is refactored into
@@ -131,11 +133,17 @@ func (daemon *Daemon) SystemInfo() (*types.Info, error) {
 		v.CPUCfsQuota = sysInfo.CPUCfsQuota
 		v.CPUShares = sysInfo.CPUShares
 		v.CPUSet = sysInfo.Cpuset
+		v.Runtimes = daemon.configStore.GetAllRuntimes()
+		v.DefaultRuntime = daemon.configStore.GetDefaultRuntimeName()
 	}
 
-	if hostname, err := os.Hostname(); err == nil {
-		v.Name = hostname
+	hostname := ""
+	if hn, err := os.Hostname(); err != nil {
+		logrus.Warnf("Could not get hostname: %v", err)
+	} else {
+		hostname = hn
 	}
+	v.Name = hostname
 
 	return v, nil
 }

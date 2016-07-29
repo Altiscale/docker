@@ -2,13 +2,12 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"syscall"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/docker/docker/daemon"
 	"github.com/docker/docker/libcontainerd"
-	"github.com/docker/docker/pkg/mflag"
 	"github.com/docker/docker/pkg/system"
 )
 
@@ -31,10 +30,23 @@ func getDaemonConfDir() string {
 
 // notifySystem sends a message to the host when the server is ready to be used
 func notifySystem() {
+	if service != nil {
+		err := service.started()
+		if err != nil {
+			logrus.Fatal(err)
+		}
+	}
+}
+
+// notifyShutdown is called after the daemon shuts down but before the process exits.
+func notifyShutdown(err error) {
+	if service != nil {
+		service.stopped(err)
+	}
 }
 
 // setupConfigReloadTrap configures a Win32 event to reload the configuration.
-func setupConfigReloadTrap(configFile string, flags *mflag.FlagSet, reload func(*daemon.Config)) {
+func (cli *DaemonCli) setupConfigReloadTrap() {
 	go func() {
 		sa := syscall.SecurityAttributes{
 			Length: 0,
@@ -44,9 +56,7 @@ func setupConfigReloadTrap(configFile string, flags *mflag.FlagSet, reload func(
 			logrus.Debugf("Config reload - waiting signal at %s", ev)
 			for {
 				syscall.WaitForSingleObject(h, syscall.INFINITE)
-				if err := daemon.ReloadConfiguration(configFile, flags, reload); err != nil {
-					logrus.Error(err)
-				}
+				cli.reloadConfig()
 			}
 		}
 	}()
@@ -65,4 +75,8 @@ func (cli *DaemonCli) getLibcontainerdRoot() string {
 
 func allocateDaemonPort(addr string) error {
 	return nil
+}
+
+func wrapListeners(proto string, ls []net.Listener) []net.Listener {
+	return ls
 }

@@ -29,24 +29,26 @@ these networks using the `docker network ls` command:
 
 ```
 $ docker network ls
+
 NETWORK ID          NAME                DRIVER
 7fca4eb8c647        bridge              bridge
 9f904ee27bf5        none                null
 cf03ee007fb4        host                host
 ```
 
-Historically, these three networks are  part of Docker's implementation. When
-you run a container you can use the `--net` flag to specify which network you
+Historically, these three networks are part of Docker's implementation. When
+you run a container you can use the `--network` flag to specify which network you
 want to run a container on. These three networks are still available to you.
 
 The `bridge` network represents the `docker0` network present in all Docker
 installations. Unless you specify otherwise with the `docker run
---net=<NETWORK>` option, the Docker daemon connects containers to this network
+--network=<NETWORK>` option, the Docker daemon connects containers to this network
 by default. You can see this bridge as part of a host's network stack by using
 the `ifconfig` command on the host.
 
 ```
 $ ifconfig
+
 docker0   Link encap:Ethernet  HWaddr 02:42:47:bc:3a:eb  
           inet addr:172.17.0.1  Bcast:0.0.0.0  Mask:255.255.0.0
           inet6 addr: fe80::42:47ff:febc:3aeb/64 Scope:Link
@@ -57,7 +59,7 @@ docker0   Link encap:Ethernet  HWaddr 02:42:47:bc:3a:eb
           RX bytes:1100 (1.1 KB)  TX bytes:648 (648.0 B)
 ```
 
-The `none` network adds a container to a container-specific network stack. That container lacks a network interface. Attaching to such a container and looking at it's stack you see this:
+The `none` network adds a container to a container-specific network stack. That container lacks a network interface. Attaching to such a container and looking at its stack you see this:
 
 ```
 $ docker attach nonenetcontainer
@@ -95,11 +97,12 @@ worth looking at the default `bridge` network a bit.
 
 
 ### The default bridge network in detail
-The default `bridge` network is present on all Docker hosts. The `docker network inspect` 
+The default `bridge` network is present on all Docker hosts. The `docker network inspect`
 command returns information about a network:
 
 ```
 $ docker network inspect bridge
+
 [
    {
        "Name": "bridge",
@@ -132,9 +135,11 @@ The `docker run` command automatically adds new containers to this network.
 
 ```
 $ docker run -itd --name=container1 busybox
+
 3386a527aa08b37ea9232cbcace2d2458d49f44bb05a6b775fba7ddd40d8f92c
 
 $ docker run -itd --name=container2 busybox
+
 94447ca479852d29aeddca75c28f7104df3c3196d7b6d83061879e339946805c
 ```
 
@@ -142,6 +147,7 @@ Inspecting the `bridge` network again after starting two containers shows both n
 
 ```
 $ docker network inspect bridge
+
 {[
     {
         "Name": "bridge",
@@ -215,6 +221,7 @@ Then use `ping` for about 3 seconds to test the connectivity of the containers o
 
 ```
 root@0cb243cd1293:/# ping -w3 172.17.0.3
+
 PING 172.17.0.3 (172.17.0.3): 56 data bytes
 64 bytes from 172.17.0.3: seq=0 ttl=64 time=0.096 ms
 64 bytes from 172.17.0.3: seq=1 ttl=64 time=0.080 ms
@@ -229,6 +236,7 @@ Finally, use the `cat` command to check the `container1` network configuration:
 
 ```
 root@0cb243cd1293:/# cat /etc/hosts
+
 172.17.0.2	3386a527aa08
 127.0.0.1	localhost
 ::1	localhost ip6-localhost ip6-loopback
@@ -243,6 +251,7 @@ To detach from a `container1` and leave it running use `CTRL-p CTRL-q`.Then, att
 $ docker attach container2
 
 root@0cb243cd1293:/# ifconfig
+
 eth0      Link encap:Ethernet  HWaddr 02:42:AC:11:00:03  
           inet addr:172.17.0.3  Bcast:0.0.0.0  Mask:255.255.0.0
           inet6 addr: fe80::42:acff:fe11:3/64 Scope:Link
@@ -262,6 +271,7 @@ lo        Link encap:Local Loopback
           RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
 
 root@0cb243cd1293:/# ping -w3 172.17.0.2
+
 PING 172.17.0.2 (172.17.0.2): 56 data bytes
 64 bytes from 172.17.0.2: seq=0 ttl=64 time=0.067 ms
 64 bytes from 172.17.0.2: seq=1 ttl=64 time=0.075 ms
@@ -311,6 +321,7 @@ $ docker network create --driver bridge isolated_nw
 1196a4c5af43a21ae38ef34515b6af19236a3fc48122cf585e3f3054d509679b
 
 $ docker network inspect isolated_nw
+
 [
     {
         "Name": "isolated_nw",
@@ -332,6 +343,7 @@ $ docker network inspect isolated_nw
 ]
 
 $ docker network ls
+
 NETWORK ID          NAME                DRIVER
 9f904ee27bf5        none                null
 cf03ee007fb4        host                host
@@ -340,10 +352,11 @@ c5ee82f76de3        isolated_nw         bridge
 
 ```
 
-After you create the network, you can launch containers on it using  the `docker run --net=<NETWORK>` option.
+After you create the network, you can launch containers on it using  the `docker run --network=<NETWORK>` option.
 
 ```
-$ docker run --net=isolated_nw -itd --name=container3 busybox
+$ docker run --network=isolated_nw -itd --name=container3 busybox
+
 8c1a0a5be480921d669a073393ade66a3fc49933f08bcc5515b37b8144f6d47c
 
 $ docker network inspect isolated_nw
@@ -449,7 +462,7 @@ Docker Engine for use with `overlay` network. There are three options to set:
     </tbody>
 </table>
 
-Create an `overlay` network on one of the machines in the Swarm.
+Create an `overlay` network on one of the machines in the swarm.
 
     $ docker network create --driver overlay my-multi-host-network
 
@@ -460,7 +473,7 @@ provides complete isolation for the containers.
 
 Then, on each host, launch containers making sure to specify the network name.
 
-    $ docker run -itd --net=my-multi-host-network busybox
+    $ docker run -itd --network=my-multi-host-network busybox
 
 Once connected, each container has access to all the containers in the network
 regardless of which Docker host the container was launched on.
@@ -519,7 +532,7 @@ functionality in user-defined networks.
 
 - [Work with network commands](work-with-networks.md)
 - [Get started with multi-host networking](get-started-overlay.md)
-- [Managing Data in Containers](../containers/dockervolumes.md)
+- [Managing Data in Containers](../../tutorials/dockervolumes.md)
 - [Docker Machine overview](https://docs.docker.com/machine)
 - [Docker Swarm overview](https://docs.docker.com/swarm)
 - [Investigate the LibNetwork project](https://github.com/docker/libnetwork)

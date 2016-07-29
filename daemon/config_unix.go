@@ -3,11 +3,13 @@
 package daemon
 
 import (
+	"fmt"
 	"net"
 
 	"github.com/docker/docker/opts"
 	flag "github.com/docker/docker/pkg/mflag"
 	runconfigopts "github.com/docker/docker/runconfig/opts"
+	"github.com/docker/engine-api/types"
 	"github.com/docker/go-units"
 )
 
@@ -30,6 +32,9 @@ type Config struct {
 	ExecRoot             string                   `json:"exec-root,omitempty"`
 	RemappedRoot         string                   `json:"userns-remap,omitempty"`
 	Ulimits              map[string]*units.Ulimit `json:"default-ulimits,omitempty"`
+	Runtimes             map[string]types.Runtime `json:"runtimes,omitempty"`
+	DefaultRuntime       string                   `json:"default-runtime,omitempty"`
+	OOMScoreAdjust       int                      `json:"oom-score-adjust,omitempty"`
 }
 
 // bridgeConfig stores all the bridge driver specific
@@ -41,7 +46,7 @@ type bridgeConfig struct {
 	EnableIPv6                  bool   `json:"ipv6,omitempty"`
 	EnableIPTables              bool   `json:"iptables,omitempty"`
 	EnableIPForward             bool   `json:"ip-forward,omitempty"`
-	EnableIPMasq                bool   `json:"ip-mask,omitempty"`
+	EnableIPMasq                bool   `json:"ip-masq,omitempty"`
 	EnableUserlandProxy         bool   `json:"userland-proxy,omitempty"`
 	DefaultIP                   net.IP `json:"ip,omitempty"`
 	IP                          string `json:"bip,omitempty"`
@@ -63,7 +68,7 @@ func (config *Config) InstallFlags(cmd *flag.FlagSet, usageFn func(string) strin
 	cmd.BoolVar(&config.EnableSelinuxSupport, []string{"-selinux-enabled"}, false, usageFn("Enable selinux support"))
 	cmd.StringVar(&config.SocketGroup, []string{"G", "-group"}, "docker", usageFn("Group for the unix socket"))
 	config.Ulimits = make(map[string]*units.Ulimit)
-	cmd.Var(runconfigopts.NewUlimitOpt(&config.Ulimits), []string{"-default-ulimit"}, usageFn("Set default ulimits for containers"))
+	cmd.Var(runconfigopts.NewUlimitOpt(&config.Ulimits), []string{"-default-ulimit"}, usageFn("Default ulimits for containers"))
 	cmd.BoolVar(&config.bridgeConfig.EnableIPTables, []string{"#iptables", "-iptables"}, true, usageFn("Enable addition of iptables rules"))
 	cmd.BoolVar(&config.bridgeConfig.EnableIPForward, []string{"#ip-forward", "-ip-forward"}, true, usageFn("Enable net.ipv4.ip_forward"))
 	cmd.BoolVar(&config.bridgeConfig.EnableIPMasq, []string{"-ip-masq"}, true, usageFn("Enable IP masquerading"))
@@ -82,6 +87,54 @@ func (config *Config) InstallFlags(cmd *flag.FlagSet, usageFn func(string) strin
 	cmd.StringVar(&config.CgroupParent, []string{"-cgroup-parent"}, "", usageFn("Set parent cgroup for all containers"))
 	cmd.StringVar(&config.RemappedRoot, []string{"-userns-remap"}, "", usageFn("User/Group setting for user namespaces"))
 	cmd.StringVar(&config.ContainerdAddr, []string{"-containerd"}, "", usageFn("Path to containerd socket"))
+	cmd.BoolVar(&config.LiveRestoreEnabled, []string{"-live-restore"}, false, usageFn("Enable live restore of docker when containers are still running"))
+	config.Runtimes = make(map[string]types.Runtime)
+	cmd.Var(runconfigopts.NewNamedRuntimeOpt("runtimes", &config.Runtimes, stockRuntimeName), []string{"-add-runtime"}, usageFn("Register an additional OCI compatible runtime"))
+	cmd.StringVar(&config.DefaultRuntime, []string{"-default-runtime"}, stockRuntimeName, usageFn("Default OCI runtime for containers"))
+	cmd.IntVar(&config.OOMScoreAdjust, []string{"-oom-score-adjust"}, -500, usageFn("Set the oom_score_adj for the daemon"))
 
 	config.attachExperimentalFlags(cmd, usageFn)
+}
+
+// GetRuntime returns the runtime path and arguments for a given
+// runtime name
+func (config *Config) GetRuntime(name string) *types.Runtime {
+	config.reloadLock.Lock()
+	defer config.reloadLock.Unlock()
+	if rt, ok := config.Runtimes[name]; ok {
+		return &rt
+	}
+	return nil
+}
+
+// GetDefaultRuntimeName returns the current default runtime
+func (config *Config) GetDefaultRuntimeName() string {
+	config.reloadLock.Lock()
+	rt := config.DefaultRuntime
+	config.reloadLock.Unlock()
+
+	return rt
+}
+
+// GetAllRuntimes returns a copy of the runtimes map
+func (config *Config) GetAllRuntimes() map[string]types.Runtime {
+	config.reloadLock.Lock()
+	rts := config.Runtimes
+	config.reloadLock.Unlock()
+	return rts
+}
+
+// GetExecRoot returns the user configured Exec-root
+func (config *Config) GetExecRoot() string {
+	return config.ExecRoot
+}
+
+func (config *Config) isSwarmCompatible() error {
+	if config.ClusterStore != "" || config.ClusterAdvertise != "" {
+		return fmt.Errorf("--cluster-store and --cluster-advertise daemon configurations are incompatible with swarm mode")
+	}
+	if config.LiveRestoreEnabled {
+		return fmt.Errorf("--live-restore daemon configuration is incompatible with swarm mode")
+	}
+	return nil
 }

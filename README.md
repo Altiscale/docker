@@ -13,18 +13,18 @@ databases, and backend services without depending on a particular stack
 or provider.
 
 Docker began as an open-source implementation of the deployment engine which
-powers [dotCloud](https://www.dotcloud.com), a popular Platform-as-a-Service.
-It benefits directly from the experience accumulated over several years
-of large-scale operation and support of hundreds of thousands of
-applications and databases.
+powered [dotCloud](http://web.archive.org/web/20130530031104/https://www.dotcloud.com/),
+a popular Platform-as-a-Service. It benefits directly from the experience
+accumulated over several years of large-scale operation and support of hundreds
+of thousands of applications and databases.
 
-![](docs/static_files/docker-logo-compressed.png "Docker")
+![Docker logo](docs/static_files/docker-logo-compressed.png "Docker")
 
 ## Security Disclosure
 
 Security is very important to us. If you have any issue regarding security,
 please disclose the information responsibly by sending an email to
-security@docker.com and not by creating a github issue.
+security@docker.com and not by creating a GitHub issue.
 
 ## Better than VMs
 
@@ -175,7 +175,7 @@ Under the hood, Docker is built on the following components:
 Contributing to Docker [![GoDoc](https://godoc.org/github.com/docker/docker?status.svg)](https://godoc.org/github.com/docker/docker)
 ======================
 
-| **Master** (Linux) | **Experimental** (linux) | **Windows** | **FreeBSD** |
+| **Master** (Linux) | **Experimental** (Linux) | **Windows** | **FreeBSD** |
 |------------------|----------------------|---------|---------|
 | [![Jenkins Build Status](https://jenkins.dockerproject.org/view/Docker/job/Docker%20Master/badge/icon)](https://jenkins.dockerproject.org/view/Docker/job/Docker%20Master/) | [![Jenkins Build Status](https://jenkins.dockerproject.org/view/Docker/job/Docker%20Master%20%28experimental%29/badge/icon)](https://jenkins.dockerproject.org/view/Docker/job/Docker%20Master%20%28experimental%29/) | [![Build Status](http://jenkins.dockerproject.org/job/Docker%20Master%20(windows)/badge/icon)](http://jenkins.dockerproject.org/job/Docker%20Master%20(windows)/) | [![Build Status](http://jenkins.dockerproject.org/job/Docker%20Master%20(freebsd)/badge/icon)](http://jenkins.dockerproject.org/job/Docker%20Master%20(freebsd)/) |
 
@@ -238,7 +238,7 @@ We are always open to suggestions on process improvements, and are always lookin
       Google account by sending an email to <a
       href="mailto:docker-dev+subscribe@googlegroups.com">docker-dev+subscribe@googlegroups.com</a>.
       You'll receive a join-request message; simply reply to the message to
-      confirm your subscribtion.
+      confirm your subscription.
     </td>
   </tr>
   <tr>

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -24,7 +25,6 @@ import (
 	"github.com/docker/docker/cliconfig"
 	"github.com/docker/docker/distribution"
 	"github.com/docker/docker/pkg/jsonmessage"
-	flag "github.com/docker/docker/pkg/mflag"
 	"github.com/docker/docker/reference"
 	"github.com/docker/docker/registry"
 	"github.com/docker/engine-api/types"
@@ -33,9 +33,11 @@ import (
 	"github.com/docker/notary/client"
 	"github.com/docker/notary/passphrase"
 	"github.com/docker/notary/trustmanager"
+	"github.com/docker/notary/trustpinning"
 	"github.com/docker/notary/tuf/data"
 	"github.com/docker/notary/tuf/signed"
 	"github.com/docker/notary/tuf/store"
+	"github.com/spf13/pflag"
 )
 
 var (
@@ -43,7 +45,13 @@ var (
 	untrusted    bool
 )
 
-func addTrustedFlags(fs *flag.FlagSet, verify bool) {
+// AddTrustedFlags adds content trust flags to the current command flagset
+func AddTrustedFlags(fs *pflag.FlagSet, verify bool) {
+	trusted, message := setupTrustedFlag(verify)
+	fs.BoolVar(&untrusted, "disable-content-trust", !trusted, message)
+}
+
+func setupTrustedFlag(verify bool) (bool, string) {
 	var trusted bool
 	if e := os.Getenv("DOCKER_CONTENT_TRUST"); e != "" {
 		if t, err := strconv.ParseBool(e); t || err != nil {
@@ -55,10 +63,11 @@ func addTrustedFlags(fs *flag.FlagSet, verify bool) {
 	if verify {
 		message = "Skip image verification"
 	}
-	fs.BoolVar(&untrusted, []string{"-disable-content-trust"}, !trusted, message)
+	return trusted, message
 }
 
-func isTrusted() bool {
+// IsTrusted returns true if content trust is enabled
+func IsTrusted() bool {
 	return !untrusted
 }
 
@@ -116,7 +125,7 @@ func (scs simpleCredentialStore) SetRefreshToken(*url.URL, string, string) {
 
 // getNotaryRepository returns a NotaryRepository which stores all the
 // information needed to operate on a notary repository.
-// It creates a HTTP transport providing authentication support.
+// It creates an HTTP transport providing authentication support.
 func (cli *DockerCli) getNotaryRepository(repoInfo *registry.RepositoryInfo, authConfig types.AuthConfig, actions ...string) (*client.NotaryRepository, error) {
 	server, err := trustServer(repoInfo.Index)
 	if err != nil {
@@ -184,7 +193,9 @@ func (cli *DockerCli) getNotaryRepository(repoInfo *registry.RepositoryInfo, aut
 	modifiers = append(modifiers, transport.RequestModifier(auth.NewAuthorizer(challengeManager, tokenHandler, basicHandler)))
 	tr := transport.NewTransport(base, modifiers...)
 
-	return client.NewNotaryRepository(cli.trustDirectory(), repoInfo.FullName(), server, tr, cli.getPassphraseRetriever())
+	return client.NewNotaryRepository(
+		cli.trustDirectory(), repoInfo.FullName(), server, tr, cli.getPassphraseRetriever(),
+		trustpinning.TrustPinConfig{})
 }
 
 func convertTarget(t client.Target) (target, error) {
@@ -214,22 +225,6 @@ func (cli *DockerCli) getPassphraseRetriever() passphrase.Retriever {
 		"default":  os.Getenv("DOCKER_CONTENT_TRUST_REPOSITORY_PASSPHRASE"),
 	}
 
-	// Backwards compatibility with old env names. We should remove this in 1.10
-	if env["root"] == "" {
-		if passphrase := os.Getenv("DOCKER_CONTENT_TRUST_OFFLINE_PASSPHRASE"); passphrase != "" {
-			env["root"] = passphrase
-			fmt.Fprintf(cli.err, "[DEPRECATED] The environment variable DOCKER_CONTENT_TRUST_OFFLINE_PASSPHRASE has been deprecated and will be removed in v1.10. Please use DOCKER_CONTENT_TRUST_ROOT_PASSPHRASE\n")
-		}
-	}
-	if env["snapshot"] == "" || env["targets"] == "" || env["default"] == "" {
-		if passphrase := os.Getenv("DOCKER_CONTENT_TRUST_TAGGING_PASSPHRASE"); passphrase != "" {
-			env["snapshot"] = passphrase
-			env["targets"] = passphrase
-			env["default"] = passphrase
-			fmt.Fprintf(cli.err, "[DEPRECATED] The environment variable DOCKER_CONTENT_TRUST_TAGGING_PASSPHRASE has been deprecated and will be removed in v1.10. Please use DOCKER_CONTENT_TRUST_REPOSITORY_PASSPHRASE\n")
-		}
-	}
-
 	return func(keyName string, alias string, createNew bool, numAttempts int) (string, bool, error) {
 		if v := env[alias]; v != "" {
 			return v, numAttempts > 1, nil
@@ -242,14 +237,15 @@ func (cli *DockerCli) getPassphraseRetriever() passphrase.Retriever {
 	}
 }
 
-func (cli *DockerCli) trustedReference(ref reference.NamedTagged) (reference.Canonical, error) {
+// TrustedReference returns the canonical trusted reference for an image reference
+func (cli *DockerCli) TrustedReference(ctx context.Context, ref reference.NamedTagged) (reference.Canonical, error) {
 	repoInfo, err := registry.ParseRepositoryInfo(ref)
 	if err != nil {
 		return nil, err
 	}
 
 	// Resolve the Auth config relevant for this server
-	authConfig := cli.resolveAuthConfig(repoInfo.Index)
+	authConfig := cli.ResolveAuthConfig(ctx, repoInfo.Index)
 
 	notaryRepo, err := cli.getNotaryRepository(repoInfo, authConfig, "pull")
 	if err != nil {
@@ -275,14 +271,11 @@ func (cli *DockerCli) trustedReference(ref reference.NamedTagged) (reference.Can
 	return reference.WithDigest(ref, r.digest)
 }
 
-func (cli *DockerCli) tagTrusted(trustedRef reference.Canonical, ref reference.NamedTagged) error {
+// TagTrusted tags a trusted ref
+func (cli *DockerCli) TagTrusted(ctx context.Context, trustedRef reference.Canonical, ref reference.NamedTagged) error {
 	fmt.Fprintf(cli.out, "Tagging %s as %s\n", trustedRef.String(), ref.String())
 
-	options := types.ImageTagOptions{
-		Force: true,
-	}
-
-	return cli.client.ImageTag(context.Background(), trustedRef.String(), ref.String(), options)
+	return cli.client.ImageTag(ctx, trustedRef.String(), ref.String())
 }
 
 func notaryError(repoName string, err error) error {
@@ -315,7 +308,8 @@ func notaryError(repoName string, err error) error {
 	return err
 }
 
-func (cli *DockerCli) trustedPull(repoInfo *registry.RepositoryInfo, ref registry.Reference, authConfig types.AuthConfig, requestPrivilege types.RequestPrivilegeFunc) error {
+// TrustedPull handles content trust pulling of an image
+func (cli *DockerCli) TrustedPull(ctx context.Context, repoInfo *registry.RepositoryInfo, ref registry.Reference, authConfig types.AuthConfig, requestPrivilege types.RequestPrivilegeFunc) error {
 	var refs []target
 
 	notaryRepo, err := cli.getNotaryRepository(repoInfo, authConfig, "pull")
@@ -377,7 +371,7 @@ func (cli *DockerCli) trustedPull(repoInfo *registry.RepositoryInfo, ref registr
 		if err != nil {
 			return err
 		}
-		if err := cli.imagePullPrivileged(authConfig, ref.String(), requestPrivilege); err != nil {
+		if err := cli.ImagePullPrivileged(ctx, authConfig, ref.String(), requestPrivilege, false); err != nil {
 			return err
 		}
 
@@ -391,7 +385,7 @@ func (cli *DockerCli) trustedPull(repoInfo *registry.RepositoryInfo, ref registr
 			if err != nil {
 				return err
 			}
-			if err := cli.tagTrusted(trustedRef, tagged); err != nil {
+			if err := cli.TagTrusted(ctx, trustedRef, tagged); err != nil {
 				return err
 			}
 		}
@@ -399,8 +393,9 @@ func (cli *DockerCli) trustedPull(repoInfo *registry.RepositoryInfo, ref registr
 	return nil
 }
 
-func (cli *DockerCli) trustedPush(repoInfo *registry.RepositoryInfo, ref reference.Named, authConfig types.AuthConfig, requestPrivilege types.RequestPrivilegeFunc) error {
-	responseBody, err := cli.imagePushPrivileged(authConfig, ref.String(), requestPrivilege)
+// TrustedPush handles content trust pushing of an image
+func (cli *DockerCli) TrustedPush(ctx context.Context, repoInfo *registry.RepositoryInfo, ref reference.Named, authConfig types.AuthConfig, requestPrivilege types.RequestPrivilegeFunc) error {
+	responseBody, err := cli.ImagePushPrivileged(ctx, authConfig, ref.String(), requestPrivilege)
 	if err != nil {
 		return err
 	}
@@ -474,7 +469,7 @@ func (cli *DockerCli) trustedPush(repoInfo *registry.RepositoryInfo, ref referen
 	}
 
 	// get the latest repository metadata so we can figure out which roles to sign
-	_, err = repo.Update(false)
+	err = repo.Update(false)
 
 	switch err.(type) {
 	case client.ErrRepoNotInitialized, client.ErrRepositoryNotExist:
@@ -564,4 +559,40 @@ func (cli *DockerCli) addTargetToAllSignableRoles(repo *client.NotaryRepository,
 	}
 
 	return repo.AddTarget(target, signableRoles...)
+}
+
+// ImagePullPrivileged pulls the image and displays it to the output
+func (cli *DockerCli) ImagePullPrivileged(ctx context.Context, authConfig types.AuthConfig, ref string, requestPrivilege types.RequestPrivilegeFunc, all bool) error {
+
+	encodedAuth, err := EncodeAuthToBase64(authConfig)
+	if err != nil {
+		return err
+	}
+	options := types.ImagePullOptions{
+		RegistryAuth:  encodedAuth,
+		PrivilegeFunc: requestPrivilege,
+		All:           all,
+	}
+
+	responseBody, err := cli.client.ImagePull(ctx, ref, options)
+	if err != nil {
+		return err
+	}
+	defer responseBody.Close()
+
+	return jsonmessage.DisplayJSONMessagesStream(responseBody, cli.out, cli.outFd, cli.isTerminalOut, nil)
+}
+
+// ImagePushPrivileged push the image
+func (cli *DockerCli) ImagePushPrivileged(ctx context.Context, authConfig types.AuthConfig, ref string, requestPrivilege types.RequestPrivilegeFunc) (io.ReadCloser, error) {
+	encodedAuth, err := EncodeAuthToBase64(authConfig)
+	if err != nil {
+		return nil, err
+	}
+	options := types.ImagePushOptions{
+		RegistryAuth:  encodedAuth,
+		PrivilegeFunc: requestPrivilege,
+	}
+
+	return cli.client.ImagePush(ctx, ref, options)
 }

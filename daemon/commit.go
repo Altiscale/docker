@@ -74,12 +74,32 @@ func merge(userConf, imageConf *containertypes.Config) error {
 	if len(userConf.Entrypoint) == 0 {
 		if len(userConf.Cmd) == 0 {
 			userConf.Cmd = imageConf.Cmd
+			userConf.ArgsEscaped = imageConf.ArgsEscaped
 		}
 
 		if userConf.Entrypoint == nil {
 			userConf.Entrypoint = imageConf.Entrypoint
 		}
 	}
+	if imageConf.Healthcheck != nil {
+		if userConf.Healthcheck == nil {
+			userConf.Healthcheck = imageConf.Healthcheck
+		} else {
+			if len(userConf.Healthcheck.Test) == 0 {
+				userConf.Healthcheck.Test = imageConf.Healthcheck.Test
+			}
+			if userConf.Healthcheck.Interval == 0 {
+				userConf.Healthcheck.Interval = imageConf.Healthcheck.Interval
+			}
+			if userConf.Healthcheck.Timeout == 0 {
+				userConf.Healthcheck.Timeout = imageConf.Healthcheck.Timeout
+			}
+			if userConf.Healthcheck.Retries == 0 {
+				userConf.Healthcheck.Retries = imageConf.Healthcheck.Retries
+			}
+		}
+	}
+
 	if userConf.WorkingDir == "" {
 		userConf.WorkingDir = imageConf.WorkingDir
 	}
